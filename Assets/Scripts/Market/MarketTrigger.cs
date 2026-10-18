@@ -67,6 +67,32 @@ namespace GameJam.Market
             }
         }
 
+        private void OnMouseDown()
+        {
+            if (Time.time - lastTriggerTime < triggerCooldown)
+                return;
+
+            Transform player = GetPlayerTransform();
+            if (player != null && Vector3.Distance(transform.position, player.position) > 6.0f)
+                return;
+
+            lastTriggerTime = Time.time;
+
+            MarketUIManager ui = marketUI != null ? marketUI : MarketUIManager.Instance;
+            if (ui != null && !ui.IsMarketOpen)
+            {
+                ui.OpenMarket();
+            }
+        }
+
+        private Transform GetPlayerTransform()
+        {
+            FirstPersonMovement fpm = FindFirstObjectByType<FirstPersonMovement>(FindObjectsInactive.Include);
+            if (fpm != null) return fpm.transform;
+            if (Camera.main != null) return Camera.main.transform;
+            return null;
+        }
+
         private bool IsPlayer(Collider col)
         {
             if (col.CompareTag("Player"))

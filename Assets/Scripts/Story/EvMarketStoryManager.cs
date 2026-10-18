@@ -13,6 +13,7 @@ using UnityEngine.InputSystem;
 public class EvMarketStoryManager : MonoBehaviour
 {
     public static EvMarketStoryManager Instance { get; private set; }
+    public static bool IsPosterCinematicActive { get; private set; } = false;
 
     public static EvMarketStoryManager EnsureInstance()
     {
@@ -60,9 +61,15 @@ public class EvMarketStoryManager : MonoBehaviour
     [Tooltip("Otomatik hikaye başlasın mı?")]
     public bool autoStart = true;
 
+    [Header("--- Diyalog Modu & Seslendirme ---")]
+    [Tooltip("Yeni seslendirmeli diyalog sistemini kullanır. Kapatılırsa anında eski orijinal diyaloglara geri döner.")]
+    public bool useNewDialoguesWithVoice = true;
+
     [Tooltip("Geri sayım süresi (saniye) - Varsayılan 90 sn (1.5 dakika)")]
     public float countdownDuration = 90f;
 
+    // NOT: Oyunda GÖSTERİLEN isimler -> Arkadaş 1 = "Can", Arkadaş 2 = "Emre".
+    // Kod, değişken adları ve yorumlar "Arkadaş 1/2" olarak bırakıldı ki eşleştirme unutulmasın.
     [Header("--- Sahne ve Karakter Referansları ---")]
     [Tooltip("Arkadaş 1 (male01_2) üzerindeki SpeechBubble bileşeni.")]
     public SpeechBubble friendA1;
@@ -84,6 +91,9 @@ public class EvMarketStoryManager : MonoBehaviour
 
     [Tooltip("Ev çıkış / giriş kapısı etkileşim objesi (İçerideki kapı).")]
     public StoryInteractable homeEntranceInteractable;
+
+    [Tooltip("Alt kattaki fiziksel ahşap kapı modeli (whinedoor) etkileşim objesi.")]
+    public StoryInteractable downstairsDoorMeshInteractable;
 
     [Tooltip("Sokaktan apartmana/eve geri giriş kapısı etkileşim objesi.")]
     public StoryInteractable streetReturnDoorInteractable;
@@ -124,6 +134,7 @@ public class EvMarketStoryManager : MonoBehaviour
     private bool hasListenedStairsDialogue = false;
     private bool isPlayerOutsideOnStreet = false;
     private bool hasUsedApartmentExitDoor = false;
+    private bool hasReturnedHomeInTime = false;
     private Transform playerTransform;
 
     private void Awake()
@@ -142,6 +153,8 @@ public class EvMarketStoryManager : MonoBehaviour
 
     private void Start()
     {
+        CrosshairUI.EnsureInstance();
+
         FindPlayer();
         AutoFindAndSetupReferences();
 
@@ -231,6 +244,18 @@ public class EvMarketStoryManager : MonoBehaviour
             }
         }
 
+        if (friendA1 != null)
+        {
+            var rc1 = friendA1.GetComponent<NPCRunController>() ?? friendA1.gameObject.AddComponent<NPCRunController>();
+            rc1.moveForwardWhenRunning = true;
+            rc1.runMoveSpeed = 3.8f;
+            rc1.rotationSpeed = 12.0f;
+            rc1.SetEscapeKeyframes(
+                new Vector3(7.5f, friendA1.transform.position.y, -6.5f),
+                new Vector3(10.5f, friendA1.transform.position.y, -13.5f)
+            );
+        }
+
         // 2. Arkadaş 2 (male02_2) - Saate yakın olan arkadaş
         if (friendA2 == null || friendA2.transform.parent != null)
         {
@@ -243,6 +268,18 @@ public class EvMarketStoryManager : MonoBehaviour
                 }
                 friendA2 = a2.GetComponent<SpeechBubble>() ?? a2.AddComponent<SpeechBubble>();
             }
+        }
+
+        if (friendA2 != null)
+        {
+            var rc2 = friendA2.GetComponent<NPCRunController>() ?? friendA2.gameObject.AddComponent<NPCRunController>();
+            rc2.moveForwardWhenRunning = true;
+            rc2.runMoveSpeed = 4.0f;
+            rc2.rotationSpeed = 12.0f;
+            rc2.SetEscapeKeyframes(
+                new Vector3(5.5f, friendA2.transform.position.y, -9.5f),
+                new Vector3(10.5f, friendA2.transform.position.y, -14.5f)
+            );
         }
 
         // 3. Duvar Saati ((Prb)Clock)
@@ -275,10 +312,19 @@ public class EvMarketStoryManager : MonoBehaviour
         GameObject pExitDoor = GameObject.Find("06_Trigger_Apartman_Cikis_Kapisi");
         if (pExitDoor == null)
         {
+            GameObject parent = GameObject.Find("[TRIGGER_PALETI_AL_KOY]") ?? GameObject.Find("/[TRIGGER_PALETI_AL_KOY]");
+            if (parent != null)
+            {
+                Transform ch = parent.transform.Find("06_Trigger_Apartman_Cikis_Kapisi");
+                if (ch != null) pExitDoor = ch.gameObject;
+            }
+        }
+        if (pExitDoor == null)
+        {
             StoryInteractable[] allInteractables = Resources.FindObjectsOfTypeAll<StoryInteractable>();
             foreach (var item in allInteractables)
             {
-                if (item.gameObject.name == "06_Trigger_Apartman_Cikis_Kapisi" || item.interactableType == InteractableType.HomeEntrance)
+                if (item.gameObject.name == "06_Trigger_Apartman_Cikis_Kapisi" || item.interactableId == "apartment_exit_door")
                 {
                     pExitDoor = item.gameObject;
                     break;
@@ -293,10 +339,32 @@ public class EvMarketStoryManager : MonoBehaviour
         GameObject pMarket = GameObject.Find("08_Trigger_Market_Giris_Tetris") ?? GameObject.Find("[ELLE_AYARLA]_MarketSystem_Sokakta");
         if (pMarket != null) marketEntranceInteractable = pMarket.GetComponent<StoryInteractable>();
 
-        GameObject pStreetDoor = GameObject.Find("09_Trigger_Sokaktan_Eve_Giris_Kapisi") ?? GameObject.Find("small Door frame.008");
+        GameObject pStreetDoor = GameObject.Find("09_Trigger_Sokaktan_Eve_Giris_Kapisi");
+        if (pStreetDoor == null)
+        {
+            GameObject parent = GameObject.Find("[TRIGGER_PALETI_AL_KOY]") ?? GameObject.Find("/[TRIGGER_PALETI_AL_KOY]");
+            if (parent != null)
+            {
+                Transform ch = parent.transform.Find("09_Trigger_Sokaktan_Eve_Giris_Kapisi");
+                if (ch != null) pStreetDoor = ch.gameObject;
+            }
+        }
+        if (pStreetDoor == null)
+        {
+            pStreetDoor = GameObject.Find("small Door frame.008");
+        }
         if (pStreetDoor != null) streetReturnDoorInteractable = pStreetDoor.GetComponent<StoryInteractable>();
 
         GameObject pReturnSpawn = GameObject.Find("10_Eve_Geri_Donus_Spawn_Noktasi");
+        if (pReturnSpawn == null)
+        {
+            GameObject parent = GameObject.Find("[TRIGGER_PALETI_AL_KOY]") ?? GameObject.Find("/[TRIGGER_PALETI_AL_KOY]");
+            if (parent != null)
+            {
+                Transform ch = parent.transform.Find("10_Eve_Geri_Donus_Spawn_Noktasi");
+                if (ch != null) pReturnSpawn = ch.gameObject;
+            }
+        }
         if (pReturnSpawn != null) houseReturnSpawnPointInside = pReturnSpawn.transform;
 
         GameObject pTable = GameObject.Find("11_Trigger_Saglam_Masa_CokKapanTutun");
@@ -373,25 +441,72 @@ public class EvMarketStoryManager : MonoBehaviour
             homeEntranceInteractable.interactableType = InteractableType.HomeEntrance;
             homeEntranceInteractable.interactableId = "apartment_exit_door";
             homeEntranceInteractable.promptText = "[E] Sokağa Çık (Markete Git)";
-            homeEntranceInteractable.interactDistance = 3.8f;
+            homeEntranceInteractable.interactDistance = 4.5f;
+            homeEntranceInteractable.requireFacing = false;
             homeEntranceInteractable.isInteractable = false;
             homeEntranceInteractable.highlightMarker = false;
+        }
+
+        // Alt kattaki fiziksel ahşap kapı modelini (whinedoor Y < -70f) tespit et ve bağla
+        GameObject downstairsDoorMesh = null;
+        var doors = UnityEngine.Object.FindObjectsByType<DoorInteract>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var d in doors)
+        {
+            if (d.gameObject.name == "whinedoor" && d.transform.position.y < -70f)
+            {
+                downstairsDoorMesh = d.gameObject;
+                break;
+            }
+        }
+        if (downstairsDoorMesh == null)
+        {
+            var direct = GameObject.Find("whinedoor");
+            if (direct != null && direct.transform.position.y < -70f) downstairsDoorMesh = direct;
+        }
+        if (downstairsDoorMesh != null)
+        {
+            var di = downstairsDoorMesh.GetComponent<DoorInteract>();
+            if (di != null)
+            {
+                di.enabled = false;
+                di.showPrompt = false;
+            }
+
+            downstairsDoorMeshInteractable = downstairsDoorMesh.GetComponent<StoryInteractable>() ?? downstairsDoorMesh.AddComponent<StoryInteractable>();
+            downstairsDoorMeshInteractable.interactableType = InteractableType.HomeEntrance;
+            downstairsDoorMeshInteractable.interactableId = "apartment_exit_door";
+            downstairsDoorMeshInteractable.promptText = "[E] Sokağa Çık (Markete Git)";
+            downstairsDoorMeshInteractable.interactDistance = 4.5f;
+            downstairsDoorMeshInteractable.requireFacing = false;
+            downstairsDoorMeshInteractable.isInteractable = false;
+            downstairsDoorMeshInteractable.highlightMarker = false;
+
+            Collider meshCol = downstairsDoorMesh.GetComponent<Collider>();
+            if (meshCol != null && homeEntranceInteractable != null)
+            {
+                homeEntranceInteractable.linkedColliders = new Collider[] { meshCol };
+                Collider trigCol = homeEntranceInteractable.GetComponent<Collider>();
+                if (trigCol != null)
+                {
+                    downstairsDoorMeshInteractable.linkedColliders = new Collider[] { trigCol };
+                }
+            }
         }
 
         // 5b. Sokaktan Apartmana/Eve Geri Giriş Kapısı (small Door frame.008)
         if (streetReturnDoorInteractable == null)
         {
-            GameObject returnDoorObj = GameObject.Find("small Door frame.008") ?? GameObject.Find("[ELLE_AYARLA]_Sokaktan_Eve_Giris_Kapisi");
-            if (returnDoorObj != null)
-            {
-                streetReturnDoorInteractable = returnDoorObj.GetComponent<StoryInteractable>() ?? returnDoorObj.AddComponent<StoryInteractable>();
-                streetReturnDoorInteractable.interactableType = InteractableType.HomeEntrance;
-                streetReturnDoorInteractable.interactableId = "street_return_door";
-                streetReturnDoorInteractable.promptText = "[E] Apartmana / Eve Gir";
-                streetReturnDoorInteractable.interactDistance = 3.8f;
-                streetReturnDoorInteractable.isInteractable = true;
-                streetReturnDoorInteractable.highlightMarker = true;
-            }
+            EnsureStreetReturnDoorReference();
+        }
+        if (streetReturnDoorInteractable != null)
+        {
+            streetReturnDoorInteractable.interactableType = InteractableType.HomeEntrance;
+            streetReturnDoorInteractable.interactableId = "street_return_door";
+            streetReturnDoorInteractable.promptText = "[E] Apartmana / Eve Gir";
+            streetReturnDoorInteractable.interactDistance = 4.5f;
+            streetReturnDoorInteractable.requireFacing = false;
+            streetReturnDoorInteractable.isInteractable = true;
+            streetReturnDoorInteractable.highlightMarker = true;
         }
 
         // 6. Deprem Posteri (Poster)
@@ -429,9 +544,11 @@ public class EvMarketStoryManager : MonoBehaviour
 
         if (posterInteractable != null)
         {
+            PosterGenerator.EnsurePosterSetup(posterInteractable.gameObject);
             posterInteractable.promptText = "[E] Deprem Posterini İncele";
             posterInteractable.isInteractable = true;
         }
+
 
         // 7. Peçete (Napkin)
         if (napkinInteractable == null)
@@ -511,10 +628,15 @@ public class EvMarketStoryManager : MonoBehaviour
         }
         else if (triggerType == GameJam.Story.StoryAreaTrigger.AreaTriggerType.StreetReturnDoor)
         {
-            if (currentStage == StoryStage.Stage6_ReturnHomeBefore2100)
+            // KAPIYA DOKUNMA İLE OTOMATİK IŞINLANMA YOK!
+            // Sadece [E] tuşuna basılınca geçiş yapılır (CheckProximityTriggers / StoryInteractable).
+            if (currentStage >= StoryStage.Stage6_ReturnHomeBefore2100)
             {
-                TeleportPlayerBackInsideHouse();
-                StartStage(StoryStage.Stage7_EarthquakeAt2100_DirectFriends);
+                ScreenFaderUI.EnsureInstance()?.ShowSubtitle("Görev", "[E] tuşuna basarak apartmana / eve gir.", 3.0f);
+            }
+            else
+            {
+                ScreenFaderUI.EnsureInstance()?.ShowSubtitle("Mert (Sen)", "Önce markete gidip deprem çantasını hazırlamalıyım!", 3.0f);
             }
         }
     }
@@ -541,6 +663,16 @@ public class EvMarketStoryManager : MonoBehaviour
             if (playerTransform == null) return;
         }
 
+        // Oyuncunun sokakta olup olmadığını Y pozisyonuna göre de senkronize et (Sokakta Y > -20, Evde Y < -50)
+        if (playerTransform.position.y > -20f)
+        {
+            isPlayerOutsideOnStreet = true;
+        }
+        else if (playerTransform.position.y < -50f && !hasUsedApartmentExitDoor)
+        {
+            isPlayerOutsideOnStreet = false;
+        }
+
         // Stage 3: Peçeteyi aldıktan sonra arkadaşların yanına dönüş
         if (currentStage == StoryStage.Stage3_TalkToFriendsUpstairs)
         {
@@ -554,7 +686,7 @@ public class EvMarketStoryManager : MonoBehaviour
             }
         }
 
-        // Stage 6: Süre bitmeden eve dönüş kontrolü
+        // Stage 6: Süre bitmeden eve dönüş kontrolü (Eve girdikten sonra odadaki masanın yanına varış)
         if (currentStage == StoryStage.Stage6_ReturnHomeBefore2100)
         {
             if (!isPlayerOutsideOnStreet)
@@ -566,35 +698,58 @@ public class EvMarketStoryManager : MonoBehaviour
                 }
                 if (isInsideHouse)
                 {
-                    StartStage(StoryStage.Stage7_EarthquakeAt2100_DirectFriends);
+                    MarkReturnedHomeInStage6();
                 }
-            }
-            else if (streetReturnDoorInteractable != null && Vector3.Distance(playerTransform.position, streetReturnDoorInteractable.transform.position) <= 2.2f)
-            {
-                TeleportPlayerBackInsideHouse();
-                StartStage(StoryStage.Stage7_EarthquakeAt2100_DirectFriends);
             }
         }
 
-        // Sokağa açılan kapı kontrolü (Stage 4 poster bakışı sonrası veya Stage 5)
+        // Sokağa açılan apartman çıkış kapısı kontrolü (Stage 4 poster bakışı sonrası veya Stage 5)
         if (!hasUsedApartmentExitDoor && !isPlayerOutsideOnStreet && currentStage >= StoryStage.Stage4_SecondPosterLook && currentStage <= StoryStage.Stage5_MarketShopping)
         {
             EnsureHomeEntranceReference();
             if (homeEntranceInteractable != null && homeEntranceInteractable.gameObject.activeInHierarchy && homeEntranceInteractable.isInteractable)
             {
-                float dist = Vector3.Distance(playerTransform.position, homeEntranceInteractable.transform.position);
-                if (dist <= 3.8f)
-                {
-                    bool isEPressed = false;
+                float distXZ = Vector2.Distance(new Vector2(playerTransform.position.x, playerTransform.position.z), new Vector2(homeEntranceInteractable.transform.position.x, homeEntranceInteractable.transform.position.z));
+                float dist3D = Vector3.Distance(playerTransform.position, homeEntranceInteractable.transform.position);
+                bool isEPressed = false;
 #if ENABLE_INPUT_SYSTEM
-                    if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) isEPressed = true;
-                    if (Gamepad.current != null && Gamepad.current.buttonWest.wasPressedThisFrame) isEPressed = true;
-#else
-                    if (Input.GetKeyDown(KeyCode.E)) isEPressed = true;
+                if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) isEPressed = true;
+                if (Gamepad.current != null && Gamepad.current.buttonWest.wasPressedThisFrame) isEPressed = true;
 #endif
-                    if (isEPressed || dist <= 1.5f)
+                try { if (Input.GetKeyDown(KeyCode.E)) isEPressed = true; } catch { }
+
+                // Sadece [E] (veya gamepad batı) basılınca ışınlan. Kapıya dokunmak ışınlamaz!
+                if (isEPressed && (dist3D <= 4.5f || distXZ <= 4.5f))
+                {
+                    TeleportPlayerToStreet();
+                }
+            }
+        }
+
+        // Sokaktan apartmana geri giriş kontrolü
+        if (isPlayerOutsideOnStreet)
+        {
+            EnsureStreetReturnDoorReference();
+            if (streetReturnDoorInteractable != null && streetReturnDoorInteractable.gameObject.activeInHierarchy)
+            {
+                float distXZ = Vector2.Distance(new Vector2(playerTransform.position.x, playerTransform.position.z), new Vector2(streetReturnDoorInteractable.transform.position.x, streetReturnDoorInteractable.transform.position.z));
+                bool isEPressed = false;
+#if ENABLE_INPUT_SYSTEM
+                if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) isEPressed = true;
+                if (Gamepad.current != null && Gamepad.current.buttonWest.wasPressedThisFrame) isEPressed = true;
+#endif
+                try { if (Input.GetKeyDown(KeyCode.E)) isEPressed = true; } catch { }
+
+                if (distXZ <= 4.5f && isEPressed)
+                {
+                    if (currentStage >= StoryStage.Stage6_ReturnHomeBefore2100)
                     {
-                        TeleportPlayerToStreet();
+                        TeleportPlayerBackInsideHouse();
+                        MarkReturnedHomeInStage6();
+                    }
+                    else
+                    {
+                        ScreenFaderUI.EnsureInstance()?.ShowSubtitle("Mert (Sen)", "Önce markete gidip deprem çantasını hazırlamalıyım!", 3.0f);
                     }
                 }
             }
@@ -648,18 +803,32 @@ public class EvMarketStoryManager : MonoBehaviour
             StartCoroutine(SecondPosterInteractionRoutine());
         }
         // Kapıdan sokağa çıkış veya sokaktan eve geri giriş
-        else if (interactable.interactableType == InteractableType.HomeEntrance)
+        else if (interactable.interactableType == InteractableType.HomeEntrance ||
+                 interactable.interactableId == "apartment_exit_door" ||
+                 interactable.interactableId == "street_return_door" ||
+                 interactable == homeEntranceInteractable ||
+                 interactable == streetReturnDoorInteractable)
         {
-            if (!isPlayerOutsideOnStreet && !hasUsedApartmentExitDoor)
+            bool isOutside = isPlayerOutsideOnStreet || (playerTransform != null && playerTransform.position.y > -20f);
+
+            if (!isOutside && !hasUsedApartmentExitDoor)
             {
-                // Evin içindeyken kapıya basarsa doğrudan sokağa ışınla! 1 kez kullan ve anında disable et!
+                // Evin içindeyken kapıya bakıp [E] ile basarsa sokağa ışınla! 1 kez kullan ve anında disable et!
                 TeleportPlayerToStreet();
             }
-            else if (isPlayerOutsideOnStreet)
+            else if (isOutside)
             {
-                // Sokaktayken giriş kapısına basarsa doğrudan eve ışınla ve depremi başlat!
-                TeleportPlayerBackInsideHouse();
-                StartStage(StoryStage.Stage7_EarthquakeAt2100_DirectFriends);
+                if (currentStage >= StoryStage.Stage6_ReturnHomeBefore2100)
+                {
+                    // Sokaktayken giriş kapısına bakıp [E] ile basarsa doğrudan eve ışınla ve
+                    // geri sayım bitince depremi başlat.
+                    TeleportPlayerBackInsideHouse();
+                    MarkReturnedHomeInStage6();
+                }
+                else
+                {
+                    ScreenFaderUI.EnsureInstance()?.ShowSubtitle("Mert (Sen)", "Önce markete gidip deprem çantasını hazırlamalıyım!", 3.0f);
+                }
             }
         }
         // Sokaktaki Market objesiyle etkileşim
@@ -795,6 +964,12 @@ public class EvMarketStoryManager : MonoBehaviour
             homeEntranceInteractable.highlightMarker = false;
         }
 
+        if (downstairsDoorMeshInteractable != null)
+        {
+            downstairsDoorMeshInteractable.highlightMarker = false;
+            downstairsDoorMeshInteractable.isInteractable = false;
+        }
+
         if (marketEntranceInteractable != null)
         {
             marketEntranceInteractable.isInteractable = true;
@@ -802,10 +977,14 @@ public class EvMarketStoryManager : MonoBehaviour
             marketEntranceInteractable.SetPrompt("[E] Markete Gir (Deprem Çantasını Hazırla)", true);
         }
 
+        EnsureStreetReturnDoorReference();
         if (streetReturnDoorInteractable != null)
         {
+            streetReturnDoorInteractable.gameObject.SetActive(true);
             streetReturnDoorInteractable.isInteractable = true;
             streetReturnDoorInteractable.highlightMarker = true;
+            streetReturnDoorInteractable.requireFacing = false;
+            streetReturnDoorInteractable.interactDistance = 4.5f;
             streetReturnDoorInteractable.SetPrompt("[E] Apartmana / Eve Gir", true);
         }
 
@@ -818,25 +997,57 @@ public class EvMarketStoryManager : MonoBehaviour
 
         if (houseReturnSpawnPointInside == null)
         {
-            GameObject sp = GameObject.Find("1_Oyuncu_Masa_Baslangic") ?? GameObject.Find("1_Oyuncu_Kahve_Masasi_Baslangic");
+            GameObject sp = GameObject.Find("10_Eve_Geri_Donus_Spawn_Noktasi");
+            if (sp == null)
+            {
+                GameObject parent = GameObject.Find("[TRIGGER_PALETI_AL_KOY]") ?? GameObject.Find("/[TRIGGER_PALETI_AL_KOY]");
+                if (parent != null)
+                {
+                    Transform ch = parent.transform.Find("10_Eve_Geri_Donus_Spawn_Noktasi");
+                    if (ch != null) sp = ch.gameObject;
+                }
+            }
             if (sp != null) houseReturnSpawnPointInside = sp.transform;
             else if (friendsRoomTriggerPoint != null) houseReturnSpawnPointInside = friendsRoomTriggerPoint;
         }
 
-        Vector3 returnPos = (houseReturnSpawnPointInside != null) ? houseReturnSpawnPointInside.position : new Vector3(3.09f, -69.57f, -9.58f);
-        Quaternion returnRot = (houseReturnSpawnPointInside != null) ? houseReturnSpawnPointInside.rotation : Quaternion.identity;
+        Vector3 returnPos = (houseReturnSpawnPointInside != null) ? houseReturnSpawnPointInside.position : new Vector3(5.64f, -75.17f, 0.13f);
+        Quaternion returnRot = (houseReturnSpawnPointInside != null) ? houseReturnSpawnPointInside.rotation : Quaternion.Euler(0f, 90f, 0f);
 
         if (playerTransform != null)
         {
             StoryLayoutDemoController.TeleportTransform(playerTransform, returnPos, returnRot);
             isPlayerOutsideOnStreet = false;
-            Debug.Log("[EvMarketStoryManager] Oyuncu sokaktan eve (masa başına) ışınlandı: " + returnPos);
+            Debug.Log("[EvMarketStoryManager] Oyuncu sokaktan eve (girişe) ışınlandı: " + returnPos);
         }
 
         if (streetReturnDoorInteractable != null)
         {
             streetReturnDoorInteractable.highlightMarker = false;
         }
+    }
+
+    /// <summary>
+    /// Oyuncu Stage 6'da (süre bitmeden) eve döndüğünde çağrılır.
+    /// Depremi HEMEN başlatmaz; geri sayım dolduğunda (OnCountdownExpired) başlatılmasını sağlar.
+    /// </summary>
+    private void MarkReturnedHomeInStage6()
+    {
+        if (currentStage != StoryStage.Stage6_ReturnHomeBefore2100) return;
+        if (hasReturnedHomeInTime) return;
+
+        hasReturnedHomeInTime = true;
+
+        ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
+
+        // Güvenlik: herhangi bir sebeple sayaç çalışmıyorsa (hile / sahne atlama) oyun kilitlenmesin, hemen başlat.
+        if (fader == null || !fader.IsCountdownRunning || fader.RemainingTime <= 0.05f)
+        {
+            StartStage(StoryStage.Stage7_EarthquakeAt2100_DirectFriends);
+            return;
+        }
+
+        fader.ShowSubtitle("Görev", "Eve yetiştin! Saat 21:00 olana kadar hazırlan ve güvenli bir yerde bekle...", 4.0f);
     }
 
     private void HandleMarketShoppingCompleted()
@@ -870,7 +1081,7 @@ public class EvMarketStoryManager : MonoBehaviour
             var allSceneObjects = Resources.FindObjectsOfTypeAll<GameObject>();
             foreach (var go in allSceneObjects)
             {
-                if (go.name == "06_Trigger_Apartman_Cikis_Kapisi" && go.scene.isLoaded)
+                if ((go.name == "06_Trigger_Apartman_Cikis_Kapisi") && go.scene.isLoaded)
                 {
                     exitObj = go;
                     break;
@@ -884,11 +1095,61 @@ public class EvMarketStoryManager : MonoBehaviour
             homeEntranceInteractable.interactableType = InteractableType.HomeEntrance;
             homeEntranceInteractable.interactableId = "apartment_exit_door";
             homeEntranceInteractable.promptText = "[E] Apartmandan Sokağa Çık (Markete Git)";
-            homeEntranceInteractable.interactDistance = 4.0f;
+            homeEntranceInteractable.interactDistance = 4.5f;
             homeEntranceInteractable.requireFacing = false;
         }
 
         return homeEntranceInteractable;
+    }
+
+    /// <summary>
+    /// Sokaktan apartmana geri giriş kapısı trigger'ının referansını garantiye alır.
+    /// Obje pasif olsa bile parent ([TRIGGER_PALETI_AL_KOY]) üzerinden veya sahnedeki objelerden bulur.
+    /// </summary>
+    public StoryInteractable EnsureStreetReturnDoorReference()
+    {
+        if (streetReturnDoorInteractable != null) return streetReturnDoorInteractable;
+
+        GameObject returnObj = GameObject.Find("09_Trigger_Sokaktan_Eve_Giris_Kapisi");
+        if (returnObj == null)
+        {
+            GameObject parent = GameObject.Find("[TRIGGER_PALETI_AL_KOY]") ?? GameObject.Find("/[TRIGGER_PALETI_AL_KOY]");
+            if (parent != null)
+            {
+                Transform child = parent.transform.Find("09_Trigger_Sokaktan_Eve_Giris_Kapisi");
+                if (child != null) returnObj = child.gameObject;
+            }
+        }
+        if (returnObj == null)
+        {
+            var allSceneObjects = Resources.FindObjectsOfTypeAll<GameObject>();
+            foreach (var go in allSceneObjects)
+            {
+                if (go.name == "09_Trigger_Sokaktan_Eve_Giris_Kapisi" && go.scene.isLoaded)
+                {
+                    returnObj = go;
+                    break;
+                }
+            }
+        }
+        if (returnObj == null)
+        {
+            returnObj = GameObject.Find("small Door frame.008");
+        }
+
+        if (returnObj != null)
+        {
+            streetReturnDoorInteractable = returnObj.GetComponent<StoryInteractable>() ?? returnObj.AddComponent<StoryInteractable>();
+            streetReturnDoorInteractable.interactableType = InteractableType.HomeEntrance;
+            streetReturnDoorInteractable.interactableId = "street_return_door";
+            streetReturnDoorInteractable.promptText = "[E] Apartmana / Eve Gir";
+            streetReturnDoorInteractable.interactDistance = 4.5f;
+            streetReturnDoorInteractable.requireFacing = false;
+            streetReturnDoorInteractable.isInteractable = true;
+            streetReturnDoorInteractable.highlightMarker = true;
+        }
+
+        return streetReturnDoorInteractable;
     }
 
     /// <summary>
@@ -911,7 +1172,7 @@ public class EvMarketStoryManager : MonoBehaviour
             homeEntranceInteractable.isInteractable = active;
             homeEntranceInteractable.highlightMarker = active;
             homeEntranceInteractable.requireFacing = false;
-            homeEntranceInteractable.interactDistance = 4.0f;
+            homeEntranceInteractable.interactDistance = 4.5f;
             if (active)
             {
                 homeEntranceInteractable.SetPrompt("[E] Apartmandan Sokağa Çık (Markete Git)", true);
@@ -936,6 +1197,25 @@ public class EvMarketStoryManager : MonoBehaviour
         else
         {
             Debug.LogWarning("[EvMarketStoryManager] SetHomeEntranceTriggerActive: 06_Trigger_Apartman_Cikis_Kapisi bulunamadı!");
+        }
+
+        if (downstairsDoorMeshInteractable != null)
+        {
+            downstairsDoorMeshInteractable.isInteractable = active;
+            downstairsDoorMeshInteractable.highlightMarker = active;
+            downstairsDoorMeshInteractable.requireFacing = false;
+            downstairsDoorMeshInteractable.interactDistance = 4.5f;
+            if (active)
+            {
+                downstairsDoorMeshInteractable.SetPrompt("[E] Sokağa Çık (Markete Git)", true);
+            }
+            else
+            {
+                if (StoryInteractable.CurrentFocused == downstairsDoorMeshInteractable)
+                {
+                    downstairsDoorMeshInteractable.SetPrompt("", false);
+                }
+            }
         }
     }
 
@@ -1005,13 +1285,34 @@ public class EvMarketStoryManager : MonoBehaviour
         yield return new WaitForSeconds(1.2f);
 
         PlayAudio(coffeeSpillClip, 0.8f);
-        Speak(friendA2, "Arkadaş 2", "Mert iyi misin? Az önce kahveni üzerine döktün!", 3.2f);
-        yield return new WaitForSeconds(3.4f);
 
-        fader.ShowSubtitle("Mert (Sen)", "Bi an daldım... Üstümü silip geleyim.", 2.8f);
-        yield return new WaitForSeconds(3.0f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 1. Arkadaş 2: "Oha kanka iyi misin? Resmen kahveyi üzerine fırlattın." {7.mp3}
+            Speak(friendA2, "Emre", "Oha kanka iyi misin? Resmen kahveyi üzerine fırlattın.", 3.4f, "7");
+            yield return new WaitForSeconds(3.6f);
 
-        fader.ShowSubtitle("Görev", "Aşağı mutfağa ilerle (Mutfak girişindeki deprem posterine bak).", 4.0f);
+            // 2. Mert (Sen): "Ben... Bi an dalmışım. Üstümü silip geliyorum." {8.mp3}
+            Speak(null, "Mert (Sen)", "Ben... Bi an dalmışım. Üstümü silip geliyorum.", 3.0f, "8");
+            yield return new WaitForSeconds(3.2f);
+
+            // 3. Arkadaş 2: "Peçete mutfakta bi de Mert mutfak girişindeki poster biraz eskimedi mi bi baksana" {9.mp3}
+            Speak(friendA2, "Emre", "Peçete mutfakta bi de Mert mutfak girişindeki poster biraz eskimedi mi bi baksana", 4.2f, "9");
+            yield return new WaitForSeconds(4.4f);
+
+            fader.ShowSubtitle("Görev", "Aşağı mutfağa ilerle (Mutfak girişindeki deprem posterine bak).", 4.0f);
+        }
+        else
+        {
+            // ESKİ ORİJİNAL DİYALOGLAR
+            Speak(friendA2, "Emre", "Mert iyi misin? Az önce kahveni üzerine döktün!", 3.2f);
+            yield return new WaitForSeconds(3.4f);
+
+            fader.ShowSubtitle("Mert (Sen)", "Bi an daldım... Üstümü silip geleyim.", 2.8f);
+            yield return new WaitForSeconds(3.0f);
+
+            fader.ShowSubtitle("Görev", "Aşağı mutfağa ilerle (Mutfak girişindeki deprem posterine bak).", 4.0f);
+        }
 
         StartStage(StoryStage.Stage1_GoToKitchenPoster);
     }
@@ -1038,18 +1339,22 @@ public class EvMarketStoryManager : MonoBehaviour
             posterInteractable.isInteractable = false;
         }
 
-        // Flashback Nabzı ve Glitch: Yıkılan ev ve bağrışmalar gelir, saat 21:01'i gösterir
+        IsPosterCinematicActive = true;
         CameraEffectsController camFx = CameraEffectsController.EnsureInstance();
-        camFx.PlayFlashbackPulse(0.8f);
 
+        // 1. ve 2. bakıştaki şiddetli ekran sarsıntıları (shake) tamamen kaldırıldı!
+        // Sarsıntı yerine postere doğru yumuşak, temiz bir normal yakınlaştırma (smooth zoom-in FOV/kamera hareketi)
+        Transform posterTr = posterInteractable != null ? posterInteractable.transform : transform;
+        yield return camFx.FocusOnPosterRoutine(posterTr, focusOnBottomRight: false, duration: 0f);
+
+        // Flashback anı: Saat 21:01
         if (wallClock != null) wallClock.SetDigitalTime(21, 1, 0);
-        camFx.StartEarthquakeShake(0.09f);
 
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
+        // Flashback anında siren sesi ({siren})
+        PlayAudio(sirenClip, 0.7f);
         fader.ShowCenterMessage("SAAT 21:01", "(Aklına yıkılan ev ve bağrışmalar gelir...)", 2.4f);
         yield return new WaitForSeconds(2.5f);
-
-        camFx.StopEarthquakeShake();
 
         fader.ShowSubtitle("Mert (Sen)", "Merdiven.. eğilme.. kapanma.. pencere...", 3.0f);
         yield return new WaitForSeconds(3.2f);
@@ -1057,11 +1362,25 @@ public class EvMarketStoryManager : MonoBehaviour
         // Saat normale (20:00) döner
         if (wallClock != null) wallClock.SetDigitalTime(20, 0, 0);
 
-        fader.ShowSubtitle("Mert (Sen)", "(Saate bakar: 20:00) Ya gerçekleşirse? Anneannem de böyle derdi bana, bu posteri o göndermişti...", 4.0f);
-        yield return new WaitForSeconds(4.2f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 7. Mert: "(Saate bakar: 20:00) Ya gerçekleşirse? Anneannem de böyle derdi bana, bu posteri o göndermişti..." {10.mp3}
+            Speak(null, "Mert (Sen)", "(Saate bakar: 20:00) Ya gerçekleşirse? Anneannem de böyle derdi bana, bu posteri o göndermişti...", 4.2f, "10");
+            yield return new WaitForSeconds(4.4f);
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "(Saate bakar: 20:00) Ya gerçekleşirse? Anneannem de böyle derdi bana, bu posteri o göndermişti...", 4.0f);
+            yield return new WaitForSeconds(4.0f);
+        }
+
+        // Kamerayı yumuşakça orijinal görüşe döndür
+        yield return camFx.ReturnFromPosterFocusRoutine(0.8f);
+        IsPosterCinematicActive = false;
 
         StartStage(StoryStage.Stage2_TakeNapkin);
     }
+
 
     // --- STAGE 2: Peçeteyi Alma ---
     private IEnumerator Stage2SetupRoutine()
@@ -1089,8 +1408,17 @@ public class EvMarketStoryManager : MonoBehaviour
         }
 
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
-        fader.ShowSubtitle("Mert (Sen)", "Peçeteyi aldım. Arkadaşların yanına gidip onları uyarmalıyım.", 2.8f);
-        yield return new WaitForSeconds(2.8f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 10. Mert: "Peçeteyi aldım. Arkadaşlarımın yanına gidip onları uyarmalıyım." {11.mp3}
+            Speak(null, "Mert (Sen)", "Peçeteyi aldım. Arkadaşlarımın yanına gidip onları uyarmalıyım.", 3.2f, "11");
+            yield return new WaitForSeconds(3.2f);
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "Peçeteyi aldım. Arkadaşların yanına gidip onları uyarmalıyım.", 2.8f);
+            yield return new WaitForSeconds(2.8f);
+        }
 
         fader.ShowSubtitle("Görev", "Yukarı çık ve arkadaşlarının yanına git.", 3.5f);
         StartStage(StoryStage.Stage3_TalkToFriendsUpstairs);
@@ -1104,17 +1432,38 @@ public class EvMarketStoryManager : MonoBehaviour
 
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
 
-        fader.ShowSubtitle("Mert (Sen)", "İçimde kötü bi his var, sanki deprem çok yakın... Parkta mı otursak?", 3.6f);
-        yield return new WaitForSeconds(3.8f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 12. Mert: "İçimde kötü bi his var, sanki deprem çok yakın... Parkta mı otursak?" {12.mp3}
+            Speak(null, "Mert (Sen)", "İçimde kötü bi his var, sanki deprem çok yakın... Parkta mı otursak?", 3.8f, "12");
+            yield return new WaitForSeconds(4.0f);
 
-        Speak(friendA1, "Arkadaş 1", "Oğlum senin yükselenin İkizler değil mi? Sabah Twitter'da gördüm, Merkür gerilemen varmış aşırı paranoyaklık yaparmış, dinlen bence.", 4.8f);
-        yield return new WaitForSeconds(5.0f);
+            // 13. Arkadaş 1: "Oğlum senin yükselenin İkizler değil mi?..." {13.mp3}
+            Speak(friendA1, "Can", "Oğlum senin yükselenin İkizler değil mi? Sabah Twitter'da gördüm, Merkür gerilemen varmış aşırı paranoyaklık yaparmış, dinlen bence.", 5.5f, "13");
+            yield return new WaitForSeconds(5.7f);
 
-        Speak(friendA2, "Arkadaş 2", "Kanka birazdan maç başlayacak, dışarı çıkıp kola ve cips alsana hem biraz hava alırsın.", 3.8f);
-        yield return new WaitForSeconds(4.0f);
+            // 14. Arkadaş 2: "Kanka birazdan maç başlayacak..." {14.mp3}
+            Speak(friendA2, "Emre", "Kanka birazdan maç başlayacak, dışarı çıkıp kola ve cips alsana hem biraz hava alırsın.", 4.2f, "14");
+            yield return new WaitForSeconds(4.4f);
 
-        fader.ShowSubtitle("Mert (Sen)", "Tamam...", 2.0f);
-        yield return new WaitForSeconds(2.2f);
+            // 15. Mert: "Tamam..." {15.mp3}
+            Speak(null, "Mert (Sen)", "Tamam...", 2.0f, "15");
+            yield return new WaitForSeconds(2.2f);
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "İçimde kötü bi his var, sanki deprem çok yakın... Parkta mı otursak?", 3.6f);
+            yield return new WaitForSeconds(3.8f);
+
+            Speak(friendA1, "Can", "Oğlum senin yükselenin İkizler değil mi? Sabah Twitter'da gördüm, Merkür gerilemen varmış aşırı paranoyaklık yaparmış, dinlen bence.", 4.8f);
+            yield return new WaitForSeconds(5.0f);
+
+            Speak(friendA2, "Emre", "Kanka birazdan maç başlayacak, dışarı çıkıp kola ve cips alsana hem biraz hava alırsın.", 3.8f);
+            yield return new WaitForSeconds(4.0f);
+
+            fader.ShowSubtitle("Mert (Sen)", "Tamam...", 2.0f);
+            yield return new WaitForSeconds(2.2f);
+        }
 
         // Postere 2. kez bakılana kadar apartman kapısı kapalı tutulur
         SetHomeEntranceTriggerActive(false);
@@ -1150,11 +1499,24 @@ public class EvMarketStoryManager : MonoBehaviour
         }
 
         // Merdivenden inerken arkadan 2 NPC konuşur
-        Speak(friendA1, "Arkadaş 1", "Müteahhit dedi zaten bu bina 9'a bile dayanır test etmişler! Hem binada oğlu oturuyor, yoksa oturtur muydu burda?", 4.8f);
-        yield return new WaitForSeconds(5.0f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 17. Arkadaş 1: "Müteahhit dedi zaten..." {16.mp3}
+            Speak(friendA1, "Can", "Müteahhit dedi zaten bu bina 9'a bile dayanır test etmişler! Hem binada oğlu oturuyor, yoksa oturtur muydu burda?", 5.0f, "16");
+            yield return new WaitForSeconds(5.2f);
 
-        Speak(friendA2, "Arkadaş 2", "Aynen kanka bence de.", 2.5f);
-        yield return new WaitForSeconds(2.6f);
+            // 18. Arkadaş 2: "Aynen kanka bence de." {17.mp3}
+            Speak(friendA2, "Emre", "Aynen kanka bence de.", 2.5f, "17");
+            yield return new WaitForSeconds(2.6f);
+        }
+        else
+        {
+            Speak(friendA1, "Can", "Müteahhit dedi zaten bu bina 9'a bile dayanır test etmişler! Hem binada oğlu oturuyor, yoksa oturtur muydu burda?", 4.8f);
+            yield return new WaitForSeconds(5.0f);
+
+            Speak(friendA2, "Emre", "Aynen kanka bence de.", 2.5f);
+            yield return new WaitForSeconds(2.6f);
+        }
 
         StartStage(StoryStage.Stage4_SecondPosterLook);
     }
@@ -1183,24 +1545,54 @@ public class EvMarketStoryManager : MonoBehaviour
             posterInteractable.isInteractable = false;
         }
 
-        CameraEffectsController.EnsureInstance()?.PlayFlashbackPulse(0.6f);
+        IsPosterCinematicActive = true;
+        CameraEffectsController camFx = CameraEffectsController.EnsureInstance();
+
+        // 1. ve 2. bakıştaki şiddetli ekran sarsıntıları (shake) tamamen kaldırıldı!
+        // 2. kez postere bakıldığında posterin sağ altındaki yazıya ("O gün binlerce insan...") EKSTRA ODAKLANAN ZOOM / DETAY KADRAJI
+        Transform posterTr = posterInteractable != null ? posterInteractable.transform : transform;
+        yield return camFx.FocusOnPosterRoutine(posterTr, focusOnBottomRight: true, duration: 0f);
 
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
         fader.ShowCenterMessage("DEPREM FARKINDALIK POSTERİ", "\"O gün binlerce insan bana bi şey olmaz diye uyudu.\"", 3.6f);
         yield return new WaitForSeconds(3.8f);
 
-        fader.ShowSubtitle("Mert (Sen)", "O ana az kaldı, ya gerçekse harekete geçmeliyim!", 2.8f);
-        yield return new WaitForSeconds(2.9f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 22. Mert: "O ana az kaldı, ya gerçekse harekete geçmeliyim!" {18.mp3}
+            Speak(null, "Mert (Sen)", "O ana az kaldı, ya gerçekse harekete geçmeliyim!", 2.8f, "18");
+            yield return new WaitForSeconds(2.8f);
 
-        // 90 SANİYE (1.5 DK) SAYACI BAŞLAR!
-        fader.StartCountdown(countdownDuration, OnCountdownExpired);
+            // Kamerayı yumuşakça orijinal görüşe döndür
+            yield return camFx.ReturnFromPosterFocusRoutine(0.8f);
+            IsPosterCinematicActive = false;
 
-        fader.ShowSubtitle("Mert (Sen)", "Markete gitmeliyim ve düdük, su, fener, konserve, ilk yardım kiti, battaniye almalıyım. Hızlı olmalıyım az kaldı!", 4.5f);
+            // 90 SANİYE (1.5 DK) SAYACI BAŞLAR!
+            fader.StartCountdown(countdownDuration, OnCountdownExpired);
+
+            // 23. Mert: "Markete gitmeliyim ve düdük, su, fener, konserve, ilk yardım kiti, battaniye almalıyım..." {19.mp3}
+            Speak(null, "Mert (Sen)", "Markete gitmeliyim ve düdük, su, fener, konserve, ilk yardım kiti, battaniye almalıyım. Hızlı olmalıyım az kaldı!", 4.8f, "19");
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "O ana az kaldı, ya gerçekse harekete geçmeliyim!", 2.8f);
+            yield return new WaitForSeconds(2.8f);
+
+            // Kamerayı yumuşakça orijinal görüşe döndür
+            yield return camFx.ReturnFromPosterFocusRoutine(0.8f);
+            IsPosterCinematicActive = false;
+
+            // 90 SANİYE (1.5 DK) SAYACI BAŞLAR!
+            fader.StartCountdown(countdownDuration, OnCountdownExpired);
+
+            fader.ShowSubtitle("Mert (Sen)", "Markete gitmeliyim ve düdük, su, fener, konserve, ilk yardım kiti, battaniye almalıyım. Hızlı olmalıyım az kaldı!", 4.5f);
+        }
 
         SetHomeEntranceTriggerActive(true);
 
         StartStage(StoryStage.Stage5_MarketShopping);
     }
+
 
     // --- STAGE 5: Markette Tetris Çantasını Hazırlama ---
     private IEnumerator Stage5Routine()
@@ -1227,18 +1619,32 @@ public class EvMarketStoryManager : MonoBehaviour
     // --- STAGE 6: Süre Bitmeden Eve Dönüş ---
     private IEnumerator Stage6Routine()
     {
+        hasReturnedHomeInTime = false;
+
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
-        fader.ShowSubtitle("Mert (Sen)", "Eşyaları aldım! Deprem olmadan acilen apartmana dönüp arkadaşların yanına çıkmalıyım!", 4.0f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 27. Mert: "Eşyaları aldım! Deprem olmadan acilen apartmana dönüp arkadaşların yanına çıkmalıyım!" {20.mp3}
+            Speak(null, "Mert (Sen)", "Eşyaları aldım! Deprem olmadan acilen apartmana dönüp arkadaşların yanına çıkmalıyım!", 4.0f, "20");
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "Eşyaları aldım! Deprem olmadan acilen apartmana dönüp arkadaşların yanına çıkmalıyım!", 4.0f);
+        }
 
         if (marketEntranceInteractable != null)
         {
             marketEntranceInteractable.highlightMarker = false;
         }
 
+        EnsureStreetReturnDoorReference();
         if (streetReturnDoorInteractable != null)
         {
+            streetReturnDoorInteractable.gameObject.SetActive(true);
             streetReturnDoorInteractable.isInteractable = true;
             streetReturnDoorInteractable.highlightMarker = true;
+            streetReturnDoorInteractable.requireFacing = false;
+            streetReturnDoorInteractable.interactDistance = 4.5f;
             streetReturnDoorInteractable.SetPrompt("[E] Apartmana / Eve Gir", true);
         }
 
@@ -1259,19 +1665,41 @@ public class EvMarketStoryManager : MonoBehaviour
 
         if (wallClock != null) wallClock.SetDigitalTime(21, 0, 0);
 
-        fader.ShowSubtitle("Mert (Sen)", "Yetiştim! Saat tam 21:00...", 2.2f);
-        yield return new WaitForSeconds(2.4f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 29. Mert: "Yetiştim! Saat tam 21:00..." {21.mp3}
+            Speak(null, "Mert (Sen)", "Yetiştim! Saat tam 21:00...", 2.4f, "21");
+            yield return new WaitForSeconds(2.6f);
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "Yetiştim! Saat tam 21:00...", 2.2f);
+            yield return new WaitForSeconds(2.4f);
+        }
 
         // DEPREM BAŞLAR!
         Debug.Log("[EvMarketStoryManager] Saat 21:00 Depremi Başladı!");
         GameEvents.TriggerEvent1(true);
         CameraEffectsController.EnsureInstance()?.StartEarthquakeShake(0.18f);
 
-        Speak(friendA1, "Arkadaş 1", "DEPREM OLUYOR! ÇILDIRACAĞIM, BİNA ÇOK FENA SALLANIYOR!", 2.8f);
-        yield return new WaitForSeconds(2.0f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 30. Arkadaş 1: "DEPREM OLUYOR! ÇILDIRACAĞIM, BİNA ÇOK FENA SALLANIYOR!" {22.mp3}
+            Speak(friendA1, "Can", "DEPREM OLUYOR! ÇILDIRACAĞIM, BİNA ÇOK FENA SALLANIYOR!", 3.0f, "22");
+            yield return new WaitForSeconds(2.2f);
 
-        Speak(friendA2, "Arkadaş 2", "MERDİVENLERE Mİ KOŞALIM YOKSA PENCEREYE Mİ?! NE YAPACAĞIZ?!", 2.8f);
-        yield return new WaitForSeconds(1.5f);
+            // 31. Arkadaş 2: "MERDİVENLERE Mİ KOŞALIM YOKSA PENCEREYE Mİ?! NE YAPACAĞIZ?!" {23.mp3}
+            Speak(friendA2, "Emre", "MERDİVENLERE Mİ KOŞALIM YOKSA PENCEREYE Mİ?! NE YAPACAĞIZ?!", 3.0f, "23");
+            yield return new WaitForSeconds(1.8f);
+        }
+        else
+        {
+            Speak(friendA1, "Can", "DEPREM OLUYOR! ÇILDIRACAĞIM, BİNA ÇOK FENA SALLANIYOR!", 2.8f);
+            yield return new WaitForSeconds(2.0f);
+
+            Speak(friendA2, "Emre", "MERDİVENLERE Mİ KOŞALIM YOKSA PENCEREYE Mİ?! NE YAPACAĞIZ?!", 2.8f);
+            yield return new WaitForSeconds(1.5f);
+        }
 
         // Arkadaşları Yönlendirme Seçimi Açılır
         FriendChoiceUI choiceUI = FriendChoiceUI.EnsureInstance();
@@ -1294,38 +1722,49 @@ public class EvMarketStoryManager : MonoBehaviour
 
     private IEnumerator WrongChoiceRoutine()
     {
-        // Arkadaşlar merdivene ve pencereye panikle koşar
+        // Arkadaşlar merdivene ve pencereye panikle koşar (2 belirgin kaçış keyframe'i ile)
         if (friendA1 != null)
         {
-            var rc1 = friendA1.GetComponent<NPCRunController>();
-            if (rc1 != null)
-            {
-                rc1.moveForwardWhenRunning = true;
-                rc1.SetCustomWaypoints(new Vector3[] {
-                    new Vector3(7.5f, friendA1.transform.position.y, -6.0f),
-                    new Vector3(9.5f, friendA1.transform.position.y, -12.0f)
-                });
-            }
+            var rc1 = friendA1.GetComponent<NPCRunController>() ?? friendA1.gameObject.AddComponent<NPCRunController>();
+            rc1.moveForwardWhenRunning = true;
+            rc1.runMoveSpeed = 4.0f;
+            rc1.rotationSpeed = 12.0f;
+            rc1.SetEscapeKeyframes(
+                new Vector3(7.5f, friendA1.transform.position.y, -6.5f),  // 1. Keyframe: Masa çevresinden koridora açıl
+                new Vector3(10.5f, friendA1.transform.position.y, -13.5f) // 2. Keyframe: Merdiven boşluğuna doğru koş
+            );
         }
         if (friendA2 != null)
         {
-            var rc2 = friendA2.GetComponent<NPCRunController>();
-            if (rc2 != null)
-            {
-                rc2.moveForwardWhenRunning = true;
-                rc2.SetCustomWaypoints(new Vector3[] {
-                    new Vector3(5.5f, friendA2.transform.position.y, -10.0f),
-                    new Vector3(9.5f, friendA2.transform.position.y, -14.0f)
-                });
-            }
+            var rc2 = friendA2.GetComponent<NPCRunController>() ?? friendA2.gameObject.AddComponent<NPCRunController>();
+            rc2.moveForwardWhenRunning = true;
+            rc2.runMoveSpeed = 4.2f;
+            rc2.rotationSpeed = 12.0f;
+            rc2.SetEscapeKeyframes(
+                new Vector3(5.5f, friendA2.transform.position.y, -9.5f),  // 1. Keyframe: Masa çevresinden koridora açıl
+                new Vector3(10.5f, friendA2.transform.position.y, -14.5f) // 2. Keyframe: Merdiven boşluğuna doğru koş
+            );
         }
 
         GameEvents.TriggerRunning(true);
-        Speak(friendA1, "Arkadaş 1", "Merdivenlere koşuuun!!", 2.0f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 32. Arkadaş 1: "Merdivenlere koşuuun!!" {24.mp3}
+            Speak(friendA1, "Can", "Merdivenlere koşuuun!!", 2.2f, "24");
+        }
+        else
+        {
+            Speak(friendA1, "Can", "Merdivenlere koşuuun!!", 2.0f);
+        }
         yield return new WaitForSeconds(1.5f);
 
         // Bina çöker (Event 2)
         GameEvents.TriggerEvent2();
+
+        // En son yıkılma / çökme anında bu arkadaşlara Rigidbody ve Collider ekle / savrulma fiziğini aktif et
+        friendA1?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
+        friendA2?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
+
         yield return new WaitForSeconds(1.0f);
 
         TriggerLoopRestart("Merdivenler ve pencere kenarı çöktü! Arkadaşların kurtulamadı...");
@@ -1333,47 +1772,67 @@ public class EvMarketStoryManager : MonoBehaviour
 
     private IEnumerator CorrectChoiceRoutine()
     {
-        Speak(friendA1, "Arkadaş 1", "Tamam, masanın yanına çöküyoruz!", 2.5f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 34. Arkadaş 1: "Tamam, masanın yanına çöküyoruz!" {25.mp3}
+            Speak(friendA1, "Can", "Tamam, masanın yanına çöküyoruz!", 2.5f, "25");
+        }
+        else
+        {
+            Speak(friendA1, "Can", "Tamam, masanın yanına çöküyoruz!", 2.5f);
+        }
 
-        // Arkadaşlar masanın yanına geçip ÇÖK-KAPAN-TUTUN pozisyonuna geçer
+        // Arkadaşlar masanın yanına 2 keyframe ile geçip ÇÖK-KAPAN-TUTUN pozisyonuna geçer
         Transform tableTarget = safeTableInteractable != null ? safeTableInteractable.transform : null;
 
         if (friendA1 != null)
         {
-            var rc1 = friendA1.GetComponent<NPCRunController>();
-            if (rc1 != null)
-            {
-                rc1.moveForwardWhenRunning = true;
-                rc1.SetCustomWaypoints(new Vector3[] {
-                    new Vector3(4.5f, friendA1.transform.position.y, -6.6f)
-                }, crouchAtEnd: true, lookAtTarget: tableTarget);
-                rc1.StartRunning();
-            }
-            else
-            {
-                GameEvents.TriggerCrouching(true);
-            }
+            var rc1 = friendA1.GetComponent<NPCRunController>() ?? friendA1.gameObject.AddComponent<NPCRunController>();
+            rc1.moveForwardWhenRunning = true;
+            rc1.runMoveSpeed = 3.6f;
+            rc1.rotationSpeed = 12.0f;
+            rc1.SetEscapeKeyframes(
+                new Vector3(4.5f, friendA1.transform.position.y, -6.6f), // 1. Keyframe: Masanın yanına yaklaş
+                new Vector3(4.5f, friendA1.transform.position.y, -7.2f), // 2. Keyframe: Masanın güvenli yaşam üçgenine otur
+                crouchAtEnd: true, 
+                lookAtTarget: tableTarget
+            );
+            rc1.StartRunning();
+        }
+        else
+        {
+            GameEvents.TriggerCrouching(true);
         }
 
         if (friendA2 != null)
         {
-            var rc2 = friendA2.GetComponent<NPCRunController>();
-            if (rc2 != null)
-            {
-                rc2.moveForwardWhenRunning = true;
-                rc2.SetCustomWaypoints(new Vector3[] {
-                    new Vector3(3.5f, friendA2.transform.position.y, -7.6f)
-                }, crouchAtEnd: true, lookAtTarget: tableTarget);
-                rc2.StartRunning();
-            }
-            else
-            {
-                GameEvents.TriggerCrouching(true);
-            }
+            var rc2 = friendA2.GetComponent<NPCRunController>() ?? friendA2.gameObject.AddComponent<NPCRunController>();
+            rc2.moveForwardWhenRunning = true;
+            rc2.runMoveSpeed = 3.8f;
+            rc2.rotationSpeed = 12.0f;
+            rc2.SetEscapeKeyframes(
+                new Vector3(3.5f, friendA2.transform.position.y, -7.0f), // 1. Keyframe: Masanın yanına yaklaş
+                new Vector3(3.5f, friendA2.transform.position.y, -7.8f), // 2. Keyframe: Masanın güvenli yaşam üçgenine otur
+                crouchAtEnd: true, 
+                lookAtTarget: tableTarget
+            );
+            rc2.StartRunning();
+        }
+        else
+        {
+            GameEvents.TriggerCrouching(true);
         }
 
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
-        fader.ShowSubtitle("Mert (Sen)", "Çabuk! 12 saniye içinde sağlam masanın yanına geç ve ÇÖK-KAPAN-TUTUN yap!", 3.2f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 35. Mert: "Çabuk! 12 saniye içinde sağlam masanın yanına geç ve ÇÖK-KAPAN-TUTUN yap!" {25.mp3}
+            Speak(null, "Mert (Sen)", "Çabuk! 12 saniye içinde sağlam masanın yanına geç ve ÇÖK-KAPAN-TUTUN yap!", 3.2f, "25");
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "Çabuk! 12 saniye içinde sağlam masanın yanına geç ve ÇÖK-KAPAN-TUTUN yap!", 3.2f);
+        }
 
         if (safeTableInteractable != null)
         {
@@ -1405,6 +1864,8 @@ public class EvMarketStoryManager : MonoBehaviour
         {
             if (safeTableInteractable != null) safeTableInteractable.highlightMarker = false;
             GameEvents.TriggerEvent2();
+            friendA1?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
+            friendA2?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
             TriggerLoopRestart("Evin tavanı çöktü! Masanın yanına Çök-Kapan-Tutun yapmadığın için kurtulamadın...");
             yield break;
         }
@@ -1418,11 +1879,21 @@ public class EvMarketStoryManager : MonoBehaviour
 
         ApplyCokKapanTutunPose();
 
-        fader.ShowSubtitle("Mert (Sen)", "Masanın yanına cenin pozisyonunda kapandım, başımı koruyorum!", 3.0f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 37. Mert: "Masanın yanına cenin pozisyonunda kapandım, başımı koruyorum!" {27.mp3}
+            Speak(null, "Mert (Sen)", "Masanın yanına cenin pozisyonunda kapandım, başımı koruyorum!", 3.0f, "27");
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "Masanın yanına cenin pozisyonunda kapandım, başımı koruyorum!", 3.0f);
+        }
         yield return new WaitForSeconds(1.4f);
 
         // Bina çöker! (2. kez çöküş)
         GameEvents.TriggerEvent2();
+        friendA1?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
+        friendA2?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
 
         // Ekran yavaşça kararır
         fader.FadeToBlack(2.5f);
@@ -1434,16 +1905,37 @@ public class EvMarketStoryManager : MonoBehaviour
         // Oyuncunun hayatta kalma ve çanta verilerini 3. sahneye aktarmak için kaydet
         if (GameJam.Market.MarketUIManager.Instance != null)
         {
-            PlayerSurvivalData.HasCompletedShopping = GameJam.Market.MarketUIManager.Instance.HasCompletedShopping;
-            PlayerSurvivalData.HasWhistle = GameJam.Market.MarketUIManager.Instance.HasWhistle();
-            PlayerSurvivalData.HasFlashlight = GameJam.Market.MarketUIManager.Instance.HasFlashlight();
-            PlayerSurvivalData.EssentialItemCount = GameJam.Market.MarketUIManager.Instance.GetPlacedEssentialCount();
+            var market = GameJam.Market.MarketUIManager.Instance;
+            PlayerSurvivalData.HasCompletedShopping = market.HasCompletedShopping;
+            PlayerSurvivalData.HasFlashlight = market.HasFlashlight();
+            PlayerSurvivalData.HasWhistle = market.HasWhistle();
+            PlayerSurvivalData.HasWater = market.HasWater();
+            PlayerSurvivalData.HasFirstAid = market.HasFirstAid();
+            PlayerSurvivalData.HasBlanket = market.HasSleepingBag();
+            PlayerSurvivalData.HasFood = market.HasCannedFood();
+            PlayerSurvivalData.EssentialItemCount = market.GetPlacedEssentialCount();
+
+            PlayerSurvivalData.PlacedItemIds.Clear();
+            if (market.Grid != null && market.Grid.PlacedItems != null)
+            {
+                foreach (var pi in market.Grid.PlacedItems)
+                {
+                    if (pi != null && pi.data != null && !string.IsNullOrEmpty(pi.data.id))
+                    {
+                        PlayerSurvivalData.PlacedItemIds.Add(pi.data.id);
+                    }
+                }
+            }
         }
         else
         {
             PlayerSurvivalData.HasCompletedShopping = true;
-            PlayerSurvivalData.HasWhistle = true;
             PlayerSurvivalData.HasFlashlight = true;
+            PlayerSurvivalData.HasWhistle = true;
+            PlayerSurvivalData.HasWater = true;
+            PlayerSurvivalData.HasFirstAid = true;
+            PlayerSurvivalData.HasBlanket = true;
+            PlayerSurvivalData.HasFood = true;
             PlayerSurvivalData.EssentialItemCount = 6;
         }
         PlayerSurvivalData.FriendsSavedAtTable = true;
@@ -1463,7 +1955,7 @@ public class EvMarketStoryManager : MonoBehaviour
         Debug.Log($"[EvMarketStoryManager] 2. kez enkaz tamamlandı. 3. Sahneye geçiliyor: '{nextSceneName}'");
         if (Application.CanStreamedLevelBeLoaded(nextSceneName))
         {
-            UnityEngine.SceneManagement.SceneManager.LoadScene(nextSceneName);
+            RequestSceneTransition(nextSceneName);
         }
         else
         {
@@ -1477,31 +1969,44 @@ public class EvMarketStoryManager : MonoBehaviour
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
         fader.SetBlackImmediate(true);
 
+        // 39. Mert: "Gözlerimi açtığımda her yer zifiri karanlıktı... Molozların altındayız."
         fader.ShowSubtitle("Mert (Sen)", "Gözlerimi açtığımda her yer zifiri karanlıktı... Molozların altındayız.", 3.5f);
         yield return new WaitForSeconds(3.7f);
 
-        fader.ShowSubtitle("Mert (Sen)", "Arkadaşlarımdan ses gelmiyor... Çantam yanımda olmalı!", 3.0f);
-        yield return new WaitForSeconds(3.2f);
-
-        // SENARYO D KONTROLÜ: Çantada Fener ve Düdük var mı?
-        bool hasWhistle = false;
-        bool hasFlashlight = false;
-
-        if (GameJam.Market.MarketUIManager.Instance != null)
+        if (useNewDialoguesWithVoice)
         {
-            hasWhistle = GameJam.Market.MarketUIManager.Instance.HasWhistle();
-            hasFlashlight = GameJam.Market.MarketUIManager.Instance.HasFlashlight();
+            // 40. Mert: "Arkadaşlarımdan ses gelmiyor... Çantam yanımda olmalı!" {29.mp3}
+            Speak(null, "Mert (Sen)", "Arkadaşlarımdan ses gelmiyor... Çantam yanımda olmalı!", 3.2f, "29");
+            yield return new WaitForSeconds(3.4f);
         }
         else
         {
-            // Market UI yoksa varsayılan true
-            hasWhistle = true;
-            hasFlashlight = true;
+            fader.ShowSubtitle("Mert (Sen)", "Arkadaşlarımdan ses gelmiyor... Çantam yanımda olmalı!", 3.0f);
+            yield return new WaitForSeconds(3.2f);
         }
 
-        if (!hasWhistle || !hasFlashlight)
+        // Çantada tüm hayati eşyalar var mı kontrol et
+        if (GameJam.Market.MarketUIManager.Instance != null)
         {
-            TriggerLoopRestart("Enkaz altında karanlıkta kaldın ve sesini AFAD ekiplerine duyuramadın...\n(Deprem çantanda Fener ve Düdük yoktu!)");
+            var market = GameJam.Market.MarketUIManager.Instance;
+            PlayerSurvivalData.HasFlashlight = market.HasFlashlight();
+            PlayerSurvivalData.HasWhistle = market.HasWhistle();
+            PlayerSurvivalData.HasWater = market.HasWater();
+            PlayerSurvivalData.HasFirstAid = market.HasFirstAid();
+            PlayerSurvivalData.HasBlanket = market.HasSleepingBag();
+            PlayerSurvivalData.HasFood = market.HasCannedFood();
+            PlayerSurvivalData.EssentialItemCount = market.GetPlacedEssentialCount();
+        }
+
+        if (!PlayerSurvivalData.HasAllEssentialItems())
+        {
+            string failReason = PlayerSurvivalData.GetPrimaryDeathReason();
+            var missingList = PlayerSurvivalData.GetMissingEssentialItemNames();
+            if (missingList != null && missingList.Count > 0)
+            {
+                failReason += $"\n(Eksik Eşyalar: {string.Join(", ", missingList)})";
+            }
+            TriggerLoopRestart(failReason);
             yield break;
         }
 
@@ -1512,7 +2017,15 @@ public class EvMarketStoryManager : MonoBehaviour
 
     private void OnRubbleFlashlightUsed()
     {
-        ScreenFaderUI.EnsureInstance()?.ShowSubtitle("Mert (Sen)", "Feneri yaktım! Masanın oluşturduğu yaşam üçgeni bizi korumuş, arkadaşlarım baygın ama nefes alıyorlar!", 3.8f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 41. Mert: "Feneri yaktım! Masanın oluşturduğu yaşam üçgeni bizi korumuş..." {30.mp3}
+            Speak(null, "Mert (Sen)", "Feneri yaktım! Masanın oluşturduğu yaşam üçgeni bizi korumuş, arkadaşlarım baygın ama nefes alıyorlar!", 4.0f, "30");
+        }
+        else
+        {
+            ScreenFaderUI.EnsureInstance()?.ShowSubtitle("Mert (Sen)", "Feneri yaktım! Masanın oluşturduğu yaşam üçgeni bizi korumuş, arkadaşlarım baygın ama nefes alıyorlar!", 3.8f);
+        }
     }
 
     private void OnRubbleWhistleUsed()
@@ -1525,12 +2038,27 @@ public class EvMarketStoryManager : MonoBehaviour
         PlayAudio(whistleSoundClip, 1.0f);
 
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
-        fader.ShowSubtitle("Mert (Sen)", "Düdüğü var gücümle çalıyorum: TİİİİİTTT! TİİİİİTTT!", 3.2f);
-        yield return new WaitForSeconds(3.4f);
 
-        PlayAudio(sirenClip, 0.85f);
-        fader.ShowSubtitle("AFAD Arama Kurtarma", "SESİ DUYDUNUZ MU?! AŞAĞIDA BİRİLERİ VAR! SESİME GEL SESİME!", 4.0f);
-        yield return new WaitForSeconds(4.2f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 42. Mert: "Düdüğü var gücümle çalıyorum: TİİİİİTTT! TİİİİİTTT!" {31.mp3}
+            Speak(null, "Mert (Sen)", "Düdüğü var gücümle çalıyorum: TİİİİİTTT! TİİİİİTTT!", 3.2f, "31");
+            yield return new WaitForSeconds(3.4f);
+
+            PlayAudio(sirenClip, 0.85f);
+            // 43. AFAD Arama Kurtarma: "SESİ DUYDUNUZ MU?! AŞAĞIDA BİRİLERİ VAR! SESİME GEL SESİME!" {32.mp3}
+            Speak(null, "AFAD Arama Kurtarma", "SESİ DUYDUNUZ MU?! AŞAĞIDA BİRİLERİ VAR! SESİME GEL SESİME!", 4.0f, "32");
+            yield return new WaitForSeconds(4.2f);
+        }
+        else
+        {
+            fader.ShowSubtitle("Mert (Sen)", "Düdüğü var gücümle çalıyorum: TİİİİİTTT! TİİİİİTTT!", 3.2f);
+            yield return new WaitForSeconds(3.4f);
+
+            PlayAudio(sirenClip, 0.85f);
+            fader.ShowSubtitle("AFAD Arama Kurtarma", "SESİ DUYDUNUZ MU?! AŞAĞIDA BİRİLERİ VAR! SESİME GEL SESİME!", 4.0f);
+            yield return new WaitForSeconds(4.2f);
+        }
 
         StartStage(StoryStage.Stage9_FinalRescueAndAwareness);
     }
@@ -1543,8 +2071,17 @@ public class EvMarketStoryManager : MonoBehaviour
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
         fader.FadeFromBlack(2.5f);
 
-        fader.ShowSubtitle("AFAD Görevlisi", "Sakin olun gençler, sizi çıkarıyoruz! Yaşam üçgeni ve deprem düdüğü hayatınızı kurtardı!", 4.0f);
-        yield return new WaitForSeconds(4.2f);
+        if (useNewDialoguesWithVoice)
+        {
+            // 44. AFAD Görevlisi: "Sakin olun gençler, sizi çıkarıyoruz! Yaşam üçgeni ve deprem düdüğü hayatınızı kurtardı!" {33.mp3}
+            Speak(null, "AFAD Görevlisi", "Sakin olun gençler, sizi çıkarıyoruz! Yaşam üçgeni ve deprem düdüğü hayatınızı kurtardı!", 4.2f, "33");
+            yield return new WaitForSeconds(4.4f);
+        }
+        else
+        {
+            fader.ShowSubtitle("AFAD Görevlisi", "Sakin olun gençler, sizi çıkarıyoruz! Yaşam üçgeni ve deprem düdüğü hayatınızı kurtardı!", 4.0f);
+            yield return new WaitForSeconds(4.2f);
+        }
 
         fader.FadeToBlack(2.0f);
         yield return new WaitForSeconds(2.0f);
@@ -1556,7 +2093,7 @@ public class EvMarketStoryManager : MonoBehaviour
         Debug.Log($"[EvMarketStoryManager] 2. kez enkaz tamamlandı. Sonraki sahneye geçiliyor: '{nextSceneName}'");
         if (Application.CanStreamedLevelBeLoaded(nextSceneName))
         {
-            UnityEngine.SceneManagement.SceneManager.LoadScene(nextSceneName);
+            RequestSceneTransition(nextSceneName);
         }
         else
         {
@@ -1570,6 +2107,13 @@ public class EvMarketStoryManager : MonoBehaviour
 
     private void OnCountdownExpired()
     {
+        // Oyuncu süre dolmadan eve dönmüşse deprem ŞİMDİ (saat 21:00'de) başlar.
+        if (currentStage == StoryStage.Stage6_ReturnHomeBefore2100 && hasReturnedHomeInTime)
+        {
+            StartStage(StoryStage.Stage7_EarthquakeAt2100_DirectFriends);
+            return;
+        }
+
         // SENARYO A: 90 sn doldu ama eve yetişemedi veya hazırlık yapmadı
         if (currentStage == StoryStage.Stage4_SecondPosterLook ||
             currentStage == StoryStage.Stage5_MarketShopping ||
@@ -1586,6 +2130,7 @@ public class EvMarketStoryManager : MonoBehaviour
     {
         if (isRestartingLoop) return;
         isRestartingLoop = true;
+        SetHomeEntranceTriggerActive(false);
 
         if (activeStoryRoutine != null)
         {
@@ -1621,10 +2166,28 @@ public class EvMarketStoryManager : MonoBehaviour
 
         GameEvents.ResetEvents();
         ResetCrouchPose();
+        PlayerSurvivalData.ResetData();
 
         // Sahneyi yeniden yükle -> Kahve dökme sahnesinden tekrar uyanış!
         string sceneName = SceneManager.GetActiveScene().name;
-        SceneManager.LoadScene(sceneName);
+        RequestSceneTransition(sceneName);
+    }
+
+    /// <summary>
+    /// Merkezi sahne koordinatörü (SceneCoordinator) mimarisi üzerinden sahne geçişi yapar.
+    /// </summary>
+    public static void RequestSceneTransition(string targetScene)
+    {
+        if (SceneCoordinator.Instance != null)
+        {
+            Debug.Log($"[EvMarketStoryManager] SceneCoordinator.Instance.RequestSceneChange('{targetScene}') çağrılıyor.");
+            SceneCoordinator.Instance.RequestSceneChange(targetScene, 1.0f);
+        }
+        else
+        {
+            Debug.Log($"[EvMarketStoryManager] Doğrudan SceneManager ile sahne yükleniyor: '{targetScene}'");
+            UnityEngine.SceneManagement.SceneManager.LoadScene(targetScene);
+        }
     }
 
     #endregion
@@ -1651,6 +2214,9 @@ public class EvMarketStoryManager : MonoBehaviour
         ScreenFaderUI.EnsureInstance()?.HideCenterMessage();
         FriendChoiceUI.EnsureInstance()?.HideChoice();
         FriendChoiceUI.EnsureInstance()?.HideRubblePrompt();
+
+        // Hile ile aşama atlarken "eve döndü" bayrağını sıfırla (eski durum sızmasın)
+        hasReturnedHomeInTime = false;
 
         if (targetStage != StoryStage.Stage7_EarthquakeAt2100_DirectFriends)
         {
@@ -1731,20 +2297,32 @@ public class EvMarketStoryManager : MonoBehaviour
 
     #region --- Yardımcı Metodlar ---
 
-    private void Speak(SpeechBubble speaker, string speakerName, string text, float duration)
+    private void Speak(SpeechBubble speaker, string speakerName, string text, float duration, string voiceClipName = null)
     {
         if (speaker != null)
         {
             speaker.Say(text, duration, speakerName);
         }
         ScreenFaderUI.EnsureInstance()?.ShowSubtitle(speakerName, text, duration);
+
+        if (!string.IsNullOrEmpty(voiceClipName) && useNewDialoguesWithVoice)
+        {
+            DialogueAudioPlayer.PlayVoice(voiceClipName);
+        }
     }
 
     private void PlayAudio(AudioClip clip, float volume = 1f)
     {
-        if (clip != null && audioSource != null)
+        if (clip == null) return;
+
+        // Sahne ses kaynağı atanmamışsa (siren/düdük seslerinin kaybolmaması için) global kaynağa düş.
+        if (audioSource != null)
         {
             audioSource.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            DialogueAudioPlayer.PlaySfx(clip, volume);
         }
     }
 

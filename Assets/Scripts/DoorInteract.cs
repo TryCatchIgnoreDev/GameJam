@@ -156,14 +156,21 @@ public class DoorInteract : MonoBehaviour
             if (playerCam == null) return;
         }
 
-        float dist = Vector3.Distance(playerCam.position, transform.position);
+        Collider col = GetComponent<Collider>();
+        if (col == null) col = GetComponentInChildren<Collider>();
+        Vector3 targetCenter = col != null ? col.bounds.center : transform.position;
+        Vector3 closestPoint = col != null ? col.ClosestPoint(playerCam.position) : targetCenter;
+
+        float dist = Vector3.Distance(playerCam.position, closestPoint);
         if (dist > interactDistance) return;
 
         if (requireFacing)
         {
-            Vector3 dirToDoor = (transform.position - playerCam.position).normalized;
-            if (Vector3.Dot(playerCam.forward, dirToDoor) < 0.25f) return;
+            Vector3 dirToDoor = (targetCenter - playerCam.position).normalized;
+            if (Vector3.Dot(playerCam.forward, dirToDoor) < 0.35f) return;
         }
+
+        if (!HasLineOfSight()) return;
 
         bool pressed = false;
 #if ENABLE_INPUT_SYSTEM
@@ -259,14 +266,21 @@ public class DoorInteract : MonoBehaviour
         if (!showPrompt) return;
         if (playerCam == null) return;
 
-        float dist = Vector3.Distance(playerCam.position, transform.position);
+        Collider col = GetComponent<Collider>();
+        if (col == null) col = GetComponentInChildren<Collider>();
+        Vector3 targetCenter = col != null ? col.bounds.center : transform.position;
+        Vector3 closestPoint = col != null ? col.ClosestPoint(playerCam.position) : targetCenter;
+
+        float dist = Vector3.Distance(playerCam.position, closestPoint);
         if (dist > interactDistance) return;
 
         if (requireFacing)
         {
-            Vector3 dirToDoor = (transform.position - playerCam.position).normalized;
-            if (Vector3.Dot(playerCam.forward, dirToDoor) < 0.25f) return;
+            Vector3 dirToDoor = (targetCenter - playerCam.position).normalized;
+            if (Vector3.Dot(playerCam.forward, dirToDoor) < 0.35f) return;
         }
+
+        if (!HasLineOfSight()) return;
 
         string keyText = interactKey.ToString();
         string actionText = IsOpen ? closePrompt : openPrompt;
@@ -280,6 +294,62 @@ public class DoorInteract : MonoBehaviour
         int width = 250;
         int height = 38;
         GUI.Box(new Rect((Screen.width - width) / 2f, Screen.height - 120, width, height), displayText, style);
+    }
+
+    /// <summary>
+    /// Oyuncu kamerası ile kapı arasında duvar/engel olup olmadığını kontrol eder.
+    /// </summary>
+    public bool HasLineOfSight()
+    {
+        if (playerCam == null)
+        {
+            FindPlayerCamera();
+            if (playerCam == null) return false;
+        }
+
+        Vector3 camPos = playerCam.position;
+        Collider col = GetComponent<Collider>();
+        if (col == null) col = GetComponentInChildren<Collider>();
+
+        Vector3 centerPoint = col != null ? col.bounds.center : transform.position;
+        Vector3 closestPoint = col != null ? col.ClosestPoint(camPos) : centerPoint;
+
+        return CheckPointVisibility(camPos, closestPoint, col) || CheckPointVisibility(camPos, centerPoint, col);
+    }
+
+    private bool CheckPointVisibility(Vector3 camPos, Vector3 targetPoint, Collider myCol)
+    {
+        Vector3 dir = targetPoint - camPos;
+        float dist = dir.magnitude;
+        if (dist <= 0.05f) return true;
+        dir /= dist;
+
+        RaycastHit[] hits = Physics.RaycastAll(camPos, dir, Mathf.Max(0.01f, dist - 0.05f), ~0, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0) return true;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hitCol = hits[i].collider;
+            if (hitCol == null) continue;
+
+            // Oyuncu collider'ını atla
+            if (hitCol.CompareTag("Player") || (playerCam != null && hitCol.transform.root == playerCam.root))
+                continue;
+
+            // Kapının kendi collider'ı veya alt parçaları ise engel değildir
+            if (hitCol == myCol || hitCol.transform == transform || hitCol.transform.IsChildOf(transform))
+                continue;
+
+            // Trigger'lar görüşü kesmez
+            if (hitCol.isTrigger) continue;
+
+            // Katı bir engel görüşü kesti!
+            return false;
+        }
+
+        return true;
     }
 
     #region Editör Yardımcıları & Context Menüleri

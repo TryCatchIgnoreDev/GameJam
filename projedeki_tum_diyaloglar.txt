@@ -1,0 +1,314 @@
+================================================================================
+                    OYUN PROJESİ TÜM DİYALOGLAR VE METİNLER LİSTESİ
+================================================================================
+Proje: GameJam Deprem Farkındalık Oyunu
+Tarih: 2026-10-18
+Format: Kronolojik Akış ve Sahnelere Göre Diyaloglar, Altyazılar, Çevre Metinleri
+
+--------------------------------------------------------------------------------
+BÖLÜM 1: GİRİŞ / KABUS SEKANSI (Intro.unity & IntroSequenceController)
+--------------------------------------------------------------------------------
+[Durum: Karakterler masada otururken açılış konuşması başlar]
+
+1. Arkadaş 1 (male01_2):
+   "Harbiden dünkü parti çok iyiydi!"
+
+2. Arkadaş 2 (male02_2):
+   "Evet ya, efsaneydi."
+
+3. Mert (Sen) [Düşünce / Altyazı]:
+   "(Kahvesinden bir yudum alır...)"
+
+4. Arkadaş 1 (male01_2):
+   "Mert harbi ya, sen dün gece neydin öyle!"
+
+5. Mert (Sen):
+   "Eyvallah, siz de fena değildiniz..."
+
+[Durum: Sarsıntı ve masa sallanması başlar]
+
+6. Arkadaş 1 (male01_2):
+   "Lan! Masa sallanıyor, deprem oluyor!"
+
+[Durum: Panik ve kaçış başlar, bina yıkılmaya doğru gider]
+
+7. Arkadaş 2 (male02_2):
+   "Çabuk dışarı koş!!"
+
+[Durum: Ekran kararır, bina çöker, siren ve kederli müzik başlar]
+
+8. Sistem / Anlatıcı [Merkez Mesajı]:
+   Başlık: "[ Enkaz Altı ]"
+   Açıklama: "Uzaktan boğuk siren sesleri, AFAD çağrıları ve çığlıklar duyuluyor..."
+
+
+--------------------------------------------------------------------------------
+BÖLÜM 2: GİRİŞ SAHNESİ YEDEK DİYALOG DİZİSİ (Intro.unity -> DialogueSequencer)
+--------------------------------------------------------------------------------
+[Not: Sahne içindeki DialogueSequencer bileşeninde tanımlı alternatif adımlar]
+
+1. male01_2:
+   "Abi bugün hava amma garip değil mi?"
+
+2. male02_2:
+   "Aynen, sanki yerin altından bir ses geliyor..."
+
+3. male01_2:
+   "Lan! Masa sallanıyor, deprem oluyor!"
+
+4. male02_2:
+   "Çabuk dışarı koş!!"
+
+
+--------------------------------------------------------------------------------
+BÖLÜM 3: EV & MARKET SAHNESİ (EvMarket.unity & EvMarketStoryManager)
+--------------------------------------------------------------------------------
+
+[AŞAMA 0: Uyanış & Kahve Dökülmesi - Saat 20:00]
+1. Arkadaş 2 (male02_2):
+   "Mert iyi misin? Az önce kahveni üzerine döktün!"
+
+2. Mert (Sen):
+   "Bi an daldım... Üstümü silip geleyim."
+
+3. Görev Yönlendirmesi:
+   "Aşağı mutfağa ilerle (Mutfak girişindeki deprem posterine bak)."
+
+
+[AŞAMA 1: Mutfak & Deprem Posterine İlk Bakış - Saat 21:01 Flashback]
+4. Etkileşim Yazısı:
+   "[E] Deprem Posterini İncele"
+
+5. Sistem / Anlatıcı [Flashback Nabzı]:
+   Başlık: "SAAT 21:01"
+   Açıklama: "(Aklına yıkılan ev ve bağrışmalar gelir...)"
+
+6. Mert (Sen):
+   "Merdiven.. eğilme.. kapanma.. pencere..."
+
+7. Mert (Sen) [Saat normale 20:00'ye döner]:
+   "(Saate bakar: 20:00) Ya gerçekleşirse? Anneannem de böyle derdi bana, bu posteri o göndermişti..."
+
+
+[AŞAMA 2: Peçeteyi Alma]
+8. Görev Yönlendirmesi:
+   "Mutfaktan peçeteyi al ve arkadaşlarının yanına git."
+
+9. Etkileşim Yazısı:
+   "[E] Peçeteyi Al"
+
+10. Mert (Sen):
+    "Peçeteyi aldım. Arkadaşların yanına gidip onları uyarmalıyım."
+
+11. Görev Yönlendirmesi:
+    "Yukarı çık ve arkadaşlarının yanına git."
+
+
+[AŞAMA 3: Arkadaşların Yanına Dönüş & Müteahhit Konuşması]
+12. Mert (Sen):
+    "İçimde kötü bi his var, sanki deprem çok yakın... Parkta mı otursak?"
+
+13. Arkadaş 1 (male01_2):
+    "Oğlum senin yükselenin İkizler değil mi? Sabah Twitter'da gördüm, Merkür gerilemen varmış aşırı paranoyaklık yaparmış, dinlen bence."
+
+14. Arkadaş 2 (male02_2):
+    "Kanka birazdan maç başlayacak, dışarı çıkıp kola ve cips alsana hem biraz hava alırsın."
+
+15. Mert (Sen):
+    "Tamam..."
+
+16. Görev Yönlendirmesi:
+    "Merdivenlerden aşağı in ve deprem posterine tekrar bak."
+
+17. Arkadaş 1 (male01_2) [Merdivenden inerken arkadan gelen konuşma]:
+    "Müteahhit dedi zaten bu bina 9'a bile dayanır test etmişler! Hem binada oğlu oturuyor, yoksa oturtur muydu burda?"
+
+18. Arkadaş 2 (male02_2):
+    "Aynen kanka bence de."
+
+
+[AŞAMA 4: Postere 2. Bakış & Geri Sayımın Başlaması]
+19. Görev Yönlendirmesi:
+    "Aşağı in ve deprem posterine tekrar bak."
+
+20. Etkileşim Yazısı:
+    "[E] Postere Tekrar Bak"
+
+21. Sistem / Anlatıcı [Poster Vurgusu]:
+    Başlık: "DEPREM FARKINDALIK POSTERİ"
+    Açıklama: "\"O gün binlerce insan bana bi şey olmaz diye uyudu.\""
+
+22. Mert (Sen):
+    "O ana az kaldı, ya gerçekse harekete geçmeliyim!"
+
+23. Mert (Sen) [90 Saniyelik Sayaç Başlarken]:
+    "Markete gitmeliyim ve düdük, su, fener, konserve, ilk yardım kiti, battaniye almalıyım. Hızlı olmalıyım az kaldı!"
+
+
+[AŞAMA 5: Markete Gidiş & Alışveriş]
+24. Görev Yönlendirmesi:
+    "Apartman çıkış kapısından sokağa çık, Markete koş ve çantayı hazırla!"
+
+25. Etkileşim Yazısı:
+    "[E] Sokağa Çık (Markete Git)"
+
+26. Görev Yönlendirmesi:
+    "Sokağa çıktın! Hemen sokağın ortasındaki Market noktasına koş!"
+
+
+[AŞAMA 6: Markette Çanta Hazırlığı Sonrası Eve Dönüş]
+27. Mert (Sen):
+    "Eşyaları aldım! Deprem olmadan acilen apartmana dönüp arkadaşların yanına çıkmalıyım!"
+
+28. Etkileşim Yazısı:
+    "[E] Apartmana / Eve Gir"
+
+
+[AŞAMA 7: Saat 21:00 Depremi & Karar Anı]
+29. Mert (Sen):
+    "Yetiştim! Saat tam 21:00..."
+
+[Sarsıntı başlar]
+
+30. Arkadaş 1 (male01_2):
+    "DEPREM OLUYOR! ÇILDIRACAĞIM, BİNA ÇOK FENA SALLANIYOR!"
+
+31. Arkadaş 2 (male02_2):
+    "MERDİVENLERE Mİ KOŞALIM YOKSA PENCEREYE Mİ?! NE YAPACAĞIZ?!"
+
+
+--- SEÇİM A: YANLIŞ KARAR (Pencere/Merdiven) ---
+32. Arkadaş 1 (male01_2):
+    "Merdivenlere koşuuun!!"
+33. Sistem / Zaman Döngüsü Başarısızlık Mesajı:
+    "Merdivenler ve pencere kenarı çöktü! Arkadaşların kurtulamadı..."
+
+
+--- SEÇİM B: DOĞRU KARAR (Sağlam Masanın Yanına Çök-Kapan-Tutun) ---
+34. Arkadaş 1 (male01_2):
+    "Tamam, masanın yanına çöküyoruz!"
+
+35. Mert (Sen):
+    "Çabuk! 12 saniye içinde sağlam masanın yanına geç ve ÇÖK-KAPAN-TUTUN yap!"
+
+36. Etkileşim Yazısı:
+    "[E] Masanın Yanında ÇÖK - KAPAN - TUTUN!"
+
+37. Mert (Sen):
+    "Masanın yanına cenin pozisyonunda kapandım, başımı koruyorum!"
+
+[Bina çöker, ekran kararır, sirenler duyulur]
+
+38. Sistem / Anlatıcı [Merkez Mesajı]:
+    Başlık: "[ Enkaz Altı ]"
+    Açıklama: "Masanın oluşturduğu yaşam üçgeninde hayattasınız...\nUzaktan arama kurtarma sesleri duyuluyor..."
+
+
+[AŞAMA 8 & 9: Enkaz Altında İlk Kurtarılış (EvMarket Alternatif Akışı)]
+39. Mert (Sen):
+    "Gözlerimi açtığımda her yer zifiri karanlıktı... Molozların altındayız."
+
+40. Mert (Sen):
+    "Arkadaşlarımdan ses gelmiyor... Çantam yanımda olmalı!"
+
+41. Mert (Sen) [Fener Yakılınca]:
+    "Feneri yaktım! Masanın oluşturduğu yaşam üçgeni bizi korumuş, arkadaşlarım baygın ama nefes alıyorlar!"
+
+42. Mert (Sen) [Düdük Çalınınca]:
+    "Düdüğü var gücümle çalıyorum: TİİİİİTTT! TİİİİİTTT!"
+
+43. AFAD Arama Kurtarma:
+    "SESİ DUYDUNUZ MU?! AŞAĞIDA BİRİLERİ VAR! SESİME GEL SESİME!"
+
+44. AFAD Görevlisi:
+    "Sakin olun gençler, sizi çıkarıyoruz! Yaşam üçgeni ve deprem düdüğü hayatınızı kurtardı!"
+
+45. Sistem / Anlatıcı [Geçiş Mesajı]:
+    Başlık: "[ Enkazdan Çıkarıldınız ]"
+    Açıklama: "Arama kurtarma ekipleri sizi güvenli bölgeye taşıyor..."
+
+
+--------------------------------------------------------------------------------
+BÖLÜM 4: ZAMAN DÖNGÜSÜ (TIME LOOP) BAŞARISIZLIK VE GERİ SARMA METİNLERİ
+--------------------------------------------------------------------------------
+[Başlık: "[ ZAMAN DÖNGÜSÜ BAŞA DÖNDÜ ]"]
+
+1. Süre Bittiğinde (90 saniye aşılınca):
+   "Molozların altında arkadaşların kurtulamadı...\n(Zamanında hazırlık yapıp eve yetişemedin)"
+
+2. Yanlış Yönlendirmede:
+   "Merdivenler ve pencere kenarı çöktü! Arkadaşların kurtulamadı..."
+
+3. Masanın Yanına Kapanılmadığında:
+   "Evin tavanı çöktü! Masanın yanına Çök-Kapan-Tutun yapmadığın için kurtulamadın..."
+
+4. Çantada Fener ve Düdük Olmadığında:
+   "Enkaz altında karanlıkta kaldın ve sesini AFAD ekiplerine duyuramadın...\n(Deprem çantanda Fener ve Düdük yoktu!)"
+
+
+--------------------------------------------------------------------------------
+BÖLÜM 5: FİNAL ENKAZ ALTI SAHNESİ (End_UnderRubble.unity & UnderRubbleSceneManager)
+--------------------------------------------------------------------------------
+
+1. Mert (Sen):
+   "Gözlerimi açtım... Zifiri karanlık, molozların altındayız. Feneri bulmalıyım!"
+
+2. Görev / Tuş Yönlendirmesi:
+   "[F] El Fenerini Aç"
+
+3. Mert (Sen) [Fener açılınca]:
+   "Yaşam üçgeni bizi korumuş ama tavan her an çökebilir... Bir ses çıkarmam lazım!"
+
+4. AFAD Arama Kurtarma [Yukarıdan MegaFon Sesi]:
+   "AŞAĞIDA KİMSE VAR MI?! SESİMİ DUYAN VARSA SES VERSİN YA DA BİR YERE VURSUN!"
+
+5. Görev / Tuş Yönlendirmesi:
+   "[E] Deprem Düdüğünü Çal (AFAD'a Sesini Duyur)"
+
+6. Mert (Sen) [AFAD çağırmadan önce düdük basılırsa]:
+   "(Düdük çaldın ama dışarıdan henüz bir ses gelmiyor...)"
+
+7. Mert (Sen) [AFAD seslenince düdük basılırsa]:
+   "BURADAYIZ! ENKAZIN ALTINDAYIZ!"
+
+8. AFAD Görevlisi:
+   "SESİ ALDIK! TAM BURADALAR! EKİP BURAYA GELSİN, ÇIKARIYORUZ!"
+
+9. FİNAL FARKINDALIK MESAJI (Outtro Kamerası Tepeye Süzülürken):
+   Başlık: "HAZIRLIK HAYAT KURTARIR"
+   Açıklama:
+   "O gün 'bana bir şey olmaz' demeyenler kurtuldu.
+Doğru bilgi, hazırlık ve sakinlik hayatta tutar.
+Farkındalık afetten önce başlar."
+
+
+--------------------------------------------------------------------------------
+BÖLÜM 6: ÇEVRE VE ETKİLEŞİM METİNLERİ (POSTER VE SEÇİM PANELLERİ)
+--------------------------------------------------------------------------------
+
+[Mutfak Deprem Farkındalık Posteri İçeriği]
+Başlık: "DEPREM ANINDA HAYATTA KALMA REHBERİ"
+Alt Başlık: "AFAD & AKUT BİLGİLENDİRME TALİMATNAMESİ"
+Maddeler:
+- "[X] Merdivenlere ve asansöre KOŞMA!
+   Sarsıntı anında merdivenler rezonansla anında yıkılabilir, asansörler kilitlenir."
+- "[X] Pencere ve balkonlardan UZAK DUR!
+   Camlar patlayarak ölümcül şarapnel etkisi yaratır, balkonlar dayanıksızdır."
+- "[+] Sağlam bir nesnenin yanına ÇÖK - KAPAN - TUTUN!
+   Masa veya sağlam baza yanında cenin pozisyonu al, başını ve enseni koru!"
+Alt Vurucu Söz:
+"O gün binlerce insan bana bi şey olmaz diye uyudu."
+
+[Deprem Anı 21:00 Karar Modalı]
+Başlık: "[!] 21:00 - BÜYÜK DEPREM BAŞLADI!"
+Açıklama: "Ev şiddetle sarsılıyor, duvarlar çatlıyor! Arkadaşların şok içinde sana bakıyor. Onlara ne yapmalarını haykıracaksın?"
+Seçenek 1:
+"[1] SEÇENEK: \"Pencere kenarına / Merdivenlere koşun!\"
+Tehlike: Sarsıntı anında merdivenler aniden yıkılabilir, camlar ölümcül şekilde patlar."
+Seçenek 2:
+"[2] SEÇENEK: \"Sağlam masanın yanına ÇÖK - KAPAN - TUTUN!\"
+Hayat Üçgeni: Anneannenin posterindeki kurala uyarak baş ve enseyi koruma altına alın."
+
+================================================================================
+                                   SON
+================================================================================

@@ -116,44 +116,135 @@ public static class PosterGenerator
     }
 
     /// <summary>
-    /// İnce bir Cube/Quad (0.8m x 1.1m x 0.02m) oluşturur, prosedürel dokuyu ve World-Space Canvas metinlerini ekler.
+    /// Assets/poster.jpg dosyasını oyunun kullandığı resmi poster dokusu olarak yükler/döndürür.
+    /// </summary>
+    public static Texture2D GetOfficialPosterTexture()
+    {
+#if UNITY_EDITOR
+        var edTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/poster.jpg");
+        if (edTex != null) return edTex;
+#endif
+        var resTex = Resources.Load<Texture2D>("poster");
+        if (resTex != null) return resTex;
+
+        string diskPath = System.IO.Path.Combine(Application.dataPath, "poster.jpg");
+        if (System.IO.File.Exists(diskPath))
+        {
+            byte[] bytes = System.IO.File.ReadAllBytes(diskPath);
+            Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (tex.LoadImage(bytes))
+            {
+                tex.name = "Tex_EarthquakePoster_Official";
+                return tex;
+            }
+        }
+
+        return GeneratePosterTexture(1024, 512);
+    }
+
+    /// <summary>
+    /// poster.jpg dokusunu kullanan resmi poster materyalini döndürür.
+    /// </summary>
+    public static Material GetPosterMaterial()
+    {
+#if UNITY_EDITOR
+        var edMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/M_EarthquakePoster.mat");
+        if (edMat != null) return edMat;
+#endif
+        Texture2D posterTex = GetOfficialPosterTexture();
+        Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
+        if (litShader == null) litShader = Shader.Find("Standard");
+        if (litShader == null) litShader = Shader.Find("Unlit/Texture");
+
+        Material posterMat = new Material(litShader);
+        posterMat.name = "M_EarthquakePoster";
+        posterMat.mainTexture = posterTex;
+        if (posterMat.HasProperty("_BaseMap")) posterMat.SetTexture("_BaseMap", posterTex);
+        if (posterMat.HasProperty("_Smoothness")) posterMat.SetFloat("_Smoothness", 0.05f);
+        return posterMat;
+    }
+
+    /// <summary>
+    /// Verilen poster objesinin (örneğin 02_Trigger_Mutfak_Posteri) resmi poster.jpg materyaline,
+    /// standart Cube mesh'e ve doğru 2:1 ölçeğe (1.4m x 0.7m x 0.02m) sahip olmasını garanti eder.
+    /// Eski çakışan PosterCanvas alt objesini pasifleştirir.
+    /// </summary>
+    public static void EnsurePosterSetup(GameObject posterObj)
+    {
+        if (posterObj == null) return;
+
+        // 1. MeshFilter ve Cube mesh
+        MeshFilter mf = posterObj.GetComponent<MeshFilter>();
+        if (mf == null) mf = posterObj.AddComponent<MeshFilter>();
+        if (mf.sharedMesh == null)
+        {
+            GameObject tempCube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            mf.sharedMesh = tempCube.GetComponent<MeshFilter>().sharedMesh;
+            UnityEngine.Object.DestroyImmediate(tempCube);
+        }
+
+        // 2. MeshRenderer ve poster.jpg Materyali
+        MeshRenderer rend = posterObj.GetComponent<MeshRenderer>();
+        if (rend == null) rend = posterObj.AddComponent<MeshRenderer>();
+        rend.sharedMaterial = GetPosterMaterial();
+
+        // 3. Ölçek (2:1 en boy oranı: 1.4m genişlik, 0.7m yükseklik, 0.02m kalınlık)
+        posterObj.transform.localScale = new Vector3(1.4f, 0.7f, 0.02f);
+
+        // 4. Collider
+        BoxCollider col = posterObj.GetComponent<BoxCollider>();
+        if (col == null) col = posterObj.AddComponent<BoxCollider>();
+        col.size = Vector3.one;
+
+        // 5. Eski metin canvas'ını devre dışı bırak
+        Transform canvasChild = posterObj.transform.Find("PosterCanvas");
+        if (canvasChild != null)
+        {
+            canvasChild.gameObject.SetActive(false);
+        }
+
+        // 6. StoryInteractable
+        StoryInteractable interactable = posterObj.GetComponent<StoryInteractable>();
+        if (interactable == null) interactable = posterObj.AddComponent<StoryInteractable>();
+        interactable.interactableType = InteractableType.Poster;
+        interactable.interactableId = "kitchen_earthquake_poster";
+        interactable.promptText = "[E] Deprem Posterini İncele";
+        interactable.interactDistance = 3.2f;
+        interactable.requireFacing = true;
+        interactable.highlightMarker = true;
+        interactable.markerHeightOffset = 0.45f;
+
+        if (posterObj.GetComponent<PosterReaderPopup>() == null)
+        {
+            posterObj.AddComponent<PosterReaderPopup>();
+        }
+    }
+
+    /// <summary>
+    /// poster.jpg dokusunu kullanan 3D pano objesi (Cube: 1.4m x 0.7m x 0.02m) oluşturur.
     /// </summary>
     public static GameObject CreatePosterObject(Vector3 position, Quaternion rotation, Transform parent = null)
     {
-        // 1. Temel 3D Pano (Cube: 0.8 x 1.1 x 0.02m)
+        // 1. Temel 3D Pano (Cube: 1.4 x 0.7 x 0.02m - poster.jpg 2:1 En Boy Oranı)
         GameObject posterObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
         posterObj.name = PosterName;
         posterObj.transform.position = position;
         posterObj.transform.rotation = rotation;
-        posterObj.transform.localScale = new Vector3(0.8f, 1.1f, 0.02f);
+        posterObj.transform.localScale = new Vector3(1.4f, 0.7f, 0.02f);
 
         if (parent != null)
         {
             posterObj.transform.SetParent(parent, true);
         }
 
-        // 2. Prosedürel Materyal ve Doku Ataması
-        Texture2D posterTex = GeneratePosterTexture(512, 720);
-        Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
-        if (litShader == null) litShader = Shader.Find("Standard");
-        if (litShader == null) litShader = Shader.Find("Unlit/Texture");
-
-        Material posterMat = new Material(litShader);
-        posterMat.name = "M_EarthquakePoster_Procedural";
-        posterMat.mainTexture = posterTex;
-        if (posterMat.HasProperty("_BaseMap")) posterMat.SetTexture("_BaseMap", posterTex);
-        if (posterMat.HasProperty("_Smoothness")) posterMat.SetFloat("_Smoothness", 0.15f);
-
+        // 2. Resmi poster.jpg Materyal ve Doku Ataması
         Renderer renderer = posterObj.GetComponent<Renderer>();
         if (renderer != null)
         {
-            renderer.sharedMaterial = posterMat;
+            renderer.sharedMaterial = GetPosterMaterial();
         }
 
-        // 3. Ön Yüze World-Space Canvas Kurulumu (Metinlerin jilet gibi okunabilir olması için)
-        BuildWorldSpaceCanvas(posterObj.transform);
-
-        // 4. StoryInteractable ve BoxCollider
+        // 3. StoryInteractable ve BoxCollider
         BoxCollider col = posterObj.GetComponent<BoxCollider>();
         if (col == null)
         {
@@ -168,21 +259,22 @@ public static class PosterGenerator
         }
         interactable.interactableType = InteractableType.Poster;
         interactable.interactableId = "kitchen_earthquake_poster";
-        interactable.promptText = "[E] Deprem Posterini Oku";
+        interactable.promptText = "[E] Deprem Posterini İncele";
         interactable.interactDistance = 3.2f;
         interactable.requireFacing = true;
         interactable.highlightMarker = true;
-        interactable.markerHeightOffset = 0.55f;
+        interactable.markerHeightOffset = 0.45f;
 
-        // Poster okuma modalı bileşenini ekle (E'ye basıldığında büyük ekran okuma paneli açar)
+        // Poster okuma modalı bileşeni
         if (posterObj.GetComponent<PosterReaderPopup>() == null)
         {
             posterObj.AddComponent<PosterReaderPopup>();
         }
 
-        Debug.Log($"[PosterGenerator] Deprem Posteri başarıyla oluşturuldu -> Konum: {position}");
+        Debug.Log($"[PosterGenerator] Deprem Posteri (poster.jpg) başarıyla oluşturuldu -> Konum: {position}");
         return posterObj;
     }
+
 
     /// <summary>
     /// Postere bağlı World-Space Canvas oluşturarak başlık, maddeler ve alt vurucu metni yerleştirir.
@@ -409,181 +501,4 @@ public static class PosterGenerator
         }
     }
     #endregion
-}
-
-/// <summary>
-/// Postere tıklandığında veya [E] ile incelendiğinde açılan yüksek çözünürlüklü detay okuma modalı.
-/// </summary>
-public class PosterReaderPopup : MonoBehaviour
-{
-    private StoryInteractable interactable;
-    private bool isPopupOpen = false;
-    private static GUIStyle modalStyle;
-    private static GUIStyle titleStyle;
-    private static GUIStyle bodyStyle;
-    private static GUIStyle quoteStyle;
-    private static GUIStyle closeBtnStyle;
-    private static Texture2D modalBgTex;
-
-    private void Awake()
-    {
-        interactable = GetComponent<StoryInteractable>();
-    }
-
-    private void OnEnable()
-    {
-        if (interactable != null)
-        {
-            interactable.OnInteracted += HandleInteracted;
-        }
-    }
-
-    private void OnDisable()
-    {
-        if (interactable != null)
-        {
-            interactable.OnInteracted -= HandleInteracted;
-        }
-    }
-
-    private int openedFrame = -1;
-
-    private void HandleInteracted(StoryInteractable src)
-    {
-        isPopupOpen = !isPopupOpen;
-        if (isPopupOpen)
-        {
-            openedFrame = Time.frameCount;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        else
-        {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-        }
-    }
-
-    private void Update()
-    {
-        if (!isPopupOpen) return;
-        if (Time.frameCount <= openedFrame) return;
-
-        // E veya ESC veya Space ile kapat
-#if ENABLE_INPUT_SYSTEM
-        if (Keyboard.current != null &&
-            (Keyboard.current.escapeKey.wasPressedThisFrame ||
-             Keyboard.current.eKey.wasPressedThisFrame ||
-             Keyboard.current.spaceKey.wasPressedThisFrame))
-        {
-            ClosePopup();
-        }
-#else
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Space))
-        {
-            ClosePopup();
-        }
-#endif
-    }
-
-    public void ClosePopup()
-    {
-        isPopupOpen = false;
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-    }
-
-    private void OnGUI()
-    {
-        if (!isPopupOpen) return;
-
-        EnsurePopupStyles();
-
-        // Arka planı hafif karart
-        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, modalStyle);
-
-        float panelW = Mathf.Min(780f, Screen.width - 60f);
-        float panelH = Mathf.Min(640f, Screen.height - 60f);
-        float panelX = (Screen.width - panelW) / 2f;
-        float panelY = (Screen.height - panelH) / 2f;
-
-        Rect modalRect = new Rect(panelX, panelY, panelW, panelH);
-        GUI.Box(modalRect, GUIContent.none, modalStyle);
-
-        GUILayout.BeginArea(new Rect(panelX + 35f, panelY + 30f, panelW - 70f, panelH - 60f));
-
-        GUILayout.Label("DEPREM ANINDA HAYATTA KALMA REHBERİ", titleStyle);
-        GUILayout.Space(12);
-
-        string itemsText = "✗ Merdivenlere ve asansöre KOŞMA!\n" +
-                           "  (Sarsıntı sırasında merdivenler kopabilir, asansör boşluğuna düşülebilir.)\n\n" +
-                           "✗ Pencere ve balkonlardan UZAK DUR!\n" +
-                           "  (Camlar şiddetle patlayıp parçalanır, balkonlar ilk çöken yerlerdir.)\n\n" +
-                           "✓ Sağlam bir nesnenin yanına ÇÖK - KAPAN - TUTUN!\n" +
-                           "  (Sağlam bir masa/baza yanında hayat üçgeni oluştur, başını ve enseni koru!)";
-
-        GUILayout.Label(itemsText, bodyStyle);
-        GUILayout.Space(25);
-
-        GUILayout.Label("\"O gün binlerce insan bana bi şey olmaz diye uyudu.\"", quoteStyle);
-        GUILayout.Space(25);
-
-        if (GUILayout.Button("Kapat [E / ESC]", closeBtnStyle, GUILayout.Height(42)))
-        {
-            ClosePopup();
-        }
-
-        GUILayout.EndArea();
-    }
-
-    private static void EnsurePopupStyles()
-    {
-        if (modalBgTex == null)
-        {
-            modalBgTex = new Texture2D(1, 1);
-            modalBgTex.SetPixel(0, 0, new Color(0.08f, 0.09f, 0.12f, 0.96f));
-            modalBgTex.Apply();
-        }
-
-        if (modalStyle == null)
-        {
-            modalStyle = new GUIStyle(GUI.skin.box);
-            modalStyle.normal.background = modalBgTex;
-        }
-
-        if (titleStyle == null)
-        {
-            titleStyle = new GUIStyle(GUI.skin.label);
-            titleStyle.fontSize = 24;
-            titleStyle.fontStyle = FontStyle.Bold;
-            titleStyle.alignment = TextAnchor.MiddleCenter;
-            titleStyle.normal.textColor = new Color(0.95f, 0.25f, 0.25f, 1f);
-        }
-
-        if (bodyStyle == null)
-        {
-            bodyStyle = new GUIStyle(GUI.skin.label);
-            bodyStyle.fontSize = 17;
-            bodyStyle.normal.textColor = Color.white;
-            bodyStyle.wordWrap = true;
-        }
-
-        if (quoteStyle == null)
-        {
-            quoteStyle = new GUIStyle(GUI.skin.label);
-            quoteStyle.fontSize = 18;
-            quoteStyle.fontStyle = FontStyle.Italic;
-            quoteStyle.alignment = TextAnchor.MiddleCenter;
-            quoteStyle.normal.textColor = new Color(1f, 0.85f, 0.45f, 1f);
-            quoteStyle.wordWrap = true;
-        }
-
-        if (closeBtnStyle == null)
-        {
-            closeBtnStyle = new GUIStyle(GUI.skin.button);
-            closeBtnStyle.fontSize = 16;
-            closeBtnStyle.fontStyle = FontStyle.Bold;
-            closeBtnStyle.normal.textColor = Color.white;
-        }
-    }
 }

@@ -15,16 +15,16 @@ RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
   m_Fog: 1
-  m_FogColor: {r: 0.06, g: 0.08, b: 0.13, a: 1}
-  m_FogMode: 3
+  m_FogColor: {r: 0.18, g: 0.15, b: 0.18, a: 1}
+  m_FogMode: 1
   m_FogDensity: 0.035
-  m_LinearFogStart: 0
-  m_LinearFogEnd: 300
-  m_AmbientSkyColor: {r: 0.08, g: 0.11, b: 0.18, a: 1}
+  m_LinearFogStart: 1
+  m_LinearFogEnd: 18
+  m_AmbientSkyColor: {r: 0.12, g: 0.1, b: 0.12, a: 1}
   m_AmbientEquatorColor: {r: 0.04, g: 0.05, b: 0.09, a: 1}
   m_AmbientGroundColor: {r: 0.015, g: 0.02, b: 0.03, a: 1}
   m_AmbientIntensity: 1
-  m_AmbientMode: 1
+  m_AmbientMode: 3
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 0}
   m_HaloStrength: 0.5
@@ -2152,6 +2152,15 @@ MonoBehaviour:
   afadCalling: 0
   isRescued: 0
   flashlightTimer: 0
+  restartSceneName: EvMarket
+  isDeathSequenceRunning: 0
+  overrideSurvivalDataForTesting: 0
+  testHasFlashlight: 1
+  testHasWhistle: 1
+  testHasWater: 1
+  testHasFirstAid: 1
+  testHasBlanket: 1
+  testHasFood: 1
 --- !u!4 &162809667 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6411062513259364757, guid: a14d35c1803091c4ab0398e58da8465a, type: 3}
@@ -21908,11 +21917,17 @@ MonoBehaviour:
   atmosphereMode: 2
   applyOnStart: 1
   outdoorFogColor: {r: 0.045, g: 0.065, b: 0.095, a: 1}
-  outdoorFogDensity: 0.032
+  outdoorFogStart: 4
+  outdoorFogEnd: 55
   indoorAmbientColor: {r: 0.12, g: 0.11, b: 0.1, a: 1}
   indoorFogDensity: 0.008
+  introFogColor: {r: 0.18, g: 0.15, b: 0.18, a: 1}
+  introFogStart: 1
+  introFogEnd: 18
+  rubbleUseRenderSettingsFog: 1
   rubbleFogColor: {r: 0.02, g: 0.028, b: 0.045, a: 1}
-  rubbleFogDensity: 0.035
+  rubbleFogStart: 0.5
+  rubbleFogEnd: 28
 --- !u!4 &1854108240
 Transform:
   m_ObjectHideFlags: 0
@@ -23536,6 +23551,10 @@ PrefabInstance:
     - target: {fileID: 4490257326247362, guid: 11aaea5348574644a9eb4f4504fcce3f, type: 3}
       propertyPath: m_LocalRotation.x
       value: 0.034899496
+      objectReference: {fileID: 0}
+    - target: {fileID: 20437472682476688, guid: 11aaea5348574644a9eb4f4504fcce3f, type: 3}
+      propertyPath: field of view
+      value: 79.972916
       objectReference: {fileID: 0}
     - target: {fileID: 20437472682476688, guid: 11aaea5348574644a9eb4f4504fcce3f, type: 3}
       propertyPath: near clip plane

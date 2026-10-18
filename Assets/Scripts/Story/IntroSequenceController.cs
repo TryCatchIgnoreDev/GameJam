@@ -17,6 +17,8 @@ public class IntroSequenceController : MonoBehaviour
     [Tooltip("Sekans başlamadan önceki bekleme süresi (saniye).")]
     public float startDelay = 1.0f;
 
+    // NOT: Oyunda GÖSTERİLEN isimler -> Arkadaş 1 = "Can", Arkadaş 2 = "Emre".
+    // Kod ve yorumlar bilinçli olarak "Arkadaş 1/2" şeklinde bırakıldı.
     [Header("--- Karakter Referansları ---")]
     [Tooltip("Arkadaş 1 (male01_2) üzerindeki SpeechBubble bileşeni. Boşsa Start'ta otomatik aranır.")]
     public SpeechBubble friendA1;
@@ -27,6 +29,10 @@ public class IntroSequenceController : MonoBehaviour
     [Header("--- Sahne Geçişi ---")]
     [Tooltip("Intro bittikten sonra yüklenecek sahne adı.")]
     public string nextSceneName = "EvMarket";
+
+    [Header("--- Diyalog Modu & Seslendirme ---")]
+    [Tooltip("Yeni seslendirmeli diyalog sistemini kullanır. Kapatılırsa anında eski orijinal diyaloglara geri döner.")]
+    public bool useNewDialoguesWithVoice = true;
 
     [Header("--- Ses Efektleri (Opsiyonel) ---")]
     public AudioClip earthquakeClip;
@@ -48,6 +54,8 @@ public class IntroSequenceController : MonoBehaviour
 
     private void Start()
     {
+        CrosshairUI.EnsureInstance();
+
         // 1. male01_2 referansını otomatik bağla
         if (friendA1 == null || friendA1.transform.parent != null)
         {
@@ -98,30 +106,26 @@ public class IntroSequenceController : MonoBehaviour
     {
         if (friendA1 != null)
         {
-            var rc1 = friendA1.GetComponent<NPCRunController>();
-            if (rc1 != null)
-            {
-                rc1.moveForwardWhenRunning = true;
-                rc1.runMoveSpeed = 3.6f;
-                rc1.SetCustomWaypoints(new Vector3[] {
-                    new Vector3(27.5f, friendA1.transform.position.y, -1862.5f),
-                    new Vector3(29.8f, friendA1.transform.position.y, -1859.2f)
-                });
-            }
+            var rc1 = friendA1.GetComponent<NPCRunController>() ?? friendA1.gameObject.AddComponent<NPCRunController>();
+            rc1.moveForwardWhenRunning = true;
+            rc1.runMoveSpeed = 3.8f;
+            rc1.rotationSpeed = 12.0f;
+            rc1.SetEscapeKeyframes(
+                new Vector3(27.5f, friendA1.transform.position.y, -1862.5f), // 1. Keyframe: Masadan koridora çıkış
+                new Vector3(29.8f, friendA1.transform.position.y, -1859.2f)  // 2. Keyframe: Dış kapıya yöneliş
+            );
         }
 
         if (friendA2 != null)
         {
-            var rc2 = friendA2.GetComponent<NPCRunController>();
-            if (rc2 != null)
-            {
-                rc2.moveForwardWhenRunning = true;
-                rc2.runMoveSpeed = 3.8f;
-                rc2.SetCustomWaypoints(new Vector3[] {
-                    new Vector3(30.2f, friendA2.transform.position.y, -1864.5f),
-                    new Vector3(29.8f, friendA2.transform.position.y, -1859.2f)
-                });
-            }
+            var rc2 = friendA2.GetComponent<NPCRunController>() ?? friendA2.gameObject.AddComponent<NPCRunController>();
+            rc2.moveForwardWhenRunning = true;
+            rc2.runMoveSpeed = 4.0f;
+            rc2.rotationSpeed = 12.0f;
+            rc2.SetEscapeKeyframes(
+                new Vector3(29.8f, friendA2.transform.position.y, -1864.5f), // 1. Keyframe: Masadan koridora çıkış
+                new Vector3(29.8f, friendA2.transform.position.y, -1859.2f)  // 2. Keyframe: Dış kapıya yöneliş
+            );
         }
     }
 
@@ -165,49 +169,92 @@ public class IntroSequenceController : MonoBehaviour
         ScreenFaderUI.EnsureInstance().FadeFromBlack(1.2f);
         yield return new WaitForSeconds(1.2f);
 
-        // 2. Arkadaş 1 konuşur + Altyazı
-        Speak(friendA1, "Arkadaş 1", "Harbiden dünkü parti çok iyiydi!", 2.8f);
-        yield return new WaitForSeconds(3.0f);
+        if (useNewDialoguesWithVoice)
+        {
+            // YENİ SESLİ DİYALOGLAR (Bölüm 1)
+            // 2. Arkadaş 1: "Harbiden dünkü parti çok iyiydi!" {1a.mp3}
+            Speak(friendA1, "Can", "Harbiden dünkü parti çok iyiydi!", 2.8f, "1a");
+            yield return new WaitForSeconds(3.0f);
 
-        // 3. Arkadaş 2 konuşur + Altyazı
-        Speak(friendA2, "Arkadaş 2", "Evet ya, efsaneydi.", 2.0f);
-        yield return new WaitForSeconds(2.2f);
+            // 3. Arkadaş 2: "Evet ya, efsaneydi." {2.mp3}
+            Speak(friendA2, "Emre", "Evet ya, efsaneydi.", 2.2f, "2");
+            yield return new WaitForSeconds(2.4f);
 
-        // 4. Mert (Sen) kahve yudumlar (Sadece Altyazı)
-        ScreenFaderUI.EnsureInstance().ShowSubtitle("Mert (Sen)", "(Kahvesinden bir yudum alır...)", 2.2f);
-        yield return new WaitForSeconds(2.4f);
+            // 4. Mert (Sen) kahve yudumlar (Sadece Altyazı)
+            ScreenFaderUI.EnsureInstance().ShowSubtitle("Mert (Sen)", "(Kahvesinden bir yudum alır...)", 2.2f);
+            yield return new WaitForSeconds(2.4f);
 
-        // 5. Arkadaş 1 konuşur + Altyazı
-        Speak(friendA1, "Arkadaş 1", "Mert harbi ya, sen dün gece neydin öyle!", 2.8f);
-        yield return new WaitForSeconds(3.0f);
+            // 5. Arkadaş 1: "Mert harbi ya, sen dün gece neydin öyle!" {3.mp3}
+            Speak(friendA1, "Can", "Mert harbi ya, sen dün gece neydin öyle!", 2.8f, "3");
+            yield return new WaitForSeconds(3.0f);
 
-        // 6. Mert (Sen) cevap verir
-        ScreenFaderUI.EnsureInstance().ShowSubtitle("Mert (Sen)", "Eyvallah, siz de fena değildiniz...", 2.5f);
-        yield return new WaitForSeconds(2.7f);
+            // 6. Mert (Sen): "Eyvallah, siz de fena değildiniz..." {4.mp3}
+            Speak(null, "Mert (Sen)", "Eyvallah, siz de fena değildiniz...", 2.6f, "4");
+            yield return new WaitForSeconds(2.8f);
 
-        // 7. DEPREM BAŞLAR: Objeler sallanır
-        Debug.Log("[IntroSequenceController] Deprem başlıyor!");
-        GameEvents.TriggerEvent1(true);
-        PlayAudio(earthquakeClip, 1f);
+            // 7. DEPREM BAŞLAR: Objeler sallanır
+            Debug.Log("[IntroSequenceController] Deprem başlıyor!");
+            GameEvents.TriggerEvent1(true);
+            PlayAudio(earthquakeClip, 1f);
 
-        Speak(friendA1, "Arkadaş 1", "Lan! Masa sallanıyor, deprem oluyor!", 2.5f);
-        yield return new WaitForSeconds(2.5f);
+            // Arkadaş 1: "Lan! Masa sallanıyor, deprem oluyor!" {5.mp3}
+            Speak(friendA1, "Can", "Lan! Masa sallanıyor, deprem oluyor!", 2.8f, "5");
+            yield return new WaitForSeconds(2.8f);
 
-        // 8. PANİK & KAÇIŞ: Karakterler koşar
-        Debug.Log("[IntroSequenceController] Panik ve kaçış başlıyor!");
-        GameEvents.TriggerRunning(true);
-        PlayAudio(panicScreamClip, 0.9f);
+            // 8. PANİK & KAÇIŞ: Karakterler koşar
+            Debug.Log("[IntroSequenceController] Panik ve kaçış başlıyor!");
+            GameEvents.TriggerRunning(true);
+            PlayAudio(panicScreamClip, 0.9f);
 
-        Speak(friendA2, "Arkadaş 2", "Çabuk dışarı koş!!", 2.5f);
-        yield return new WaitForSeconds(2.5f);
+            // Arkadaş 2: "Ne yapacağımı bilmiyorum!!" {6.mp3} (Yeni değişen replik)
+            Speak(friendA2, "Emre", "Ne yapacağımı bilmiyorum!!", 2.6f, "6");
+            yield return new WaitForSeconds(2.6f);
+        }
+        else
+        {
+            // ESKİ ORİJİNAL DİYALOGLAR (Geriye uyumlu)
+            Speak(friendA1, "Can", "Harbiden dünkü parti çok iyiydi!", 2.8f);
+            yield return new WaitForSeconds(3.0f);
+
+            Speak(friendA2, "Emre", "Evet ya, efsaneydi.", 2.0f);
+            yield return new WaitForSeconds(2.2f);
+
+            ScreenFaderUI.EnsureInstance().ShowSubtitle("Mert (Sen)", "(Kahvesinden bir yudum alır...)", 2.2f);
+            yield return new WaitForSeconds(2.4f);
+
+            Speak(friendA1, "Can", "Mert harbi ya, sen dün gece neydin öyle!", 2.8f);
+            yield return new WaitForSeconds(3.0f);
+
+            ScreenFaderUI.EnsureInstance().ShowSubtitle("Mert (Sen)", "Eyvallah, siz de fena değildiniz...", 2.5f);
+            yield return new WaitForSeconds(2.7f);
+
+            Debug.Log("[IntroSequenceController] Deprem başlıyor!");
+            GameEvents.TriggerEvent1(true);
+            PlayAudio(earthquakeClip, 1f);
+
+            Speak(friendA1, "Can", "Lan! Masa sallanıyor, deprem oluyor!", 2.5f);
+            yield return new WaitForSeconds(2.5f);
+
+            Debug.Log("[IntroSequenceController] Panik ve kaçış başlıyor!");
+            GameEvents.TriggerRunning(true);
+            PlayAudio(panicScreamClip, 0.9f);
+
+            Speak(friendA2, "Emre", "Çabuk dışarı koş!!", 2.5f);
+            yield return new WaitForSeconds(2.5f);
+        }
 
         // 9. Ekran yavaşça kararmaya başlar (3.0s), 1.5 sn sonra bina çöker (Event 2)
         Debug.Log("[IntroSequenceController] Ekran kararıyor, bina çökecek...");
         ScreenFaderUI.EnsureInstance().FadeToBlack(3.0f);
         yield return new WaitForSeconds(1.5f);
 
-        // Kararmaya yakın bina fiziksel olarak çöker
+        // Kararmaya yakın bina fiziksel olarak çöker (Event 2)
         GameEvents.TriggerEvent2();
+
+        // En son yıkılma / çökme anında bu arkadaşlara Rigidbody ve Collider ekle / savrulma fiziğini aktif et
+        friendA1?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
+        friendA2?.GetComponent<NPCRunController>()?.EnableCollapsePhysics();
+
         yield return new WaitForSeconds(1.5f);
 
         // 10. Ekran tamamen karardığında sallantı durdurulur ve merkez mesajı gösterilir
@@ -227,7 +274,7 @@ public class IntroSequenceController : MonoBehaviour
         LoadNextScene();
     }
 
-    private void Speak(SpeechBubble speaker, string speakerName, string text, float duration)
+    private void Speak(SpeechBubble speaker, string speakerName, string text, float duration, string voiceClipName = null)
     {
         if (speaker != null)
         {
@@ -235,13 +282,25 @@ public class IntroSequenceController : MonoBehaviour
         }
 
         ScreenFaderUI.EnsureInstance().ShowSubtitle(speakerName, text, duration);
+
+        if (!string.IsNullOrEmpty(voiceClipName) && useNewDialoguesWithVoice)
+        {
+            DialogueAudioPlayer.PlayVoice(voiceClipName);
+        }
     }
 
     private void PlayAudio(AudioClip clip, float volume = 1f)
     {
-        if (clip != null && audioSource != null)
+        if (clip == null) return;
+
+        // Sahne ses kaynağı atanmamışsa (siren/AFAD seslerinin kaybolmaması için) global kaynağa düş.
+        if (audioSource != null)
         {
             audioSource.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            DialogueAudioPlayer.PlaySfx(clip, volume);
         }
     }
 
@@ -255,21 +314,13 @@ public class IntroSequenceController : MonoBehaviour
 
         Debug.Log($"[IntroSequenceController] Sahne geçişi yapılıyor: {nextSceneName}");
 
-        try
+        if (SceneCoordinator.Instance != null)
         {
-            if (Application.CanStreamedLevelBeLoaded(nextSceneName))
-            {
-                SceneManager.LoadScene(nextSceneName);
-            }
-            else
-            {
-                Debug.LogWarning($"[IntroSequenceController] '{nextSceneName}' sahnesi Build Settings'de kayıtlı görünmüyor. Yine de LoadScene çağrılıyor...");
-                SceneManager.LoadScene(nextSceneName);
-            }
+            SceneCoordinator.Instance.RequestSceneChange(nextSceneName, 1.0f);
         }
-        catch (Exception ex)
+        else
         {
-            Debug.LogError($"[IntroSequenceController] '{nextSceneName}' sahnesi yüklenirken hata oluştu: {ex.Message}");
+            SceneManager.LoadScene(nextSceneName);
         }
     }
 

@@ -51,6 +51,7 @@ public class HouseRigidbodyAssigner : MonoBehaviour
 
         SliceFloors();
         AssignRigidbodies();
+        AssignNPCPhysics();
     }
 
     void Update()
@@ -249,5 +250,82 @@ public class HouseRigidbodyAssigner : MonoBehaviour
             }
             rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
         }
+    }
+
+    /// <summary>
+    /// Bina yıkılma anında (Event 2) sahnedeki arkadaş NPC'lere Rigidbody ve Collider ekler,
+    /// Animator'larını kapatır ve binanın çökmesiyle beraber fiziksel olarak yere savrulup düşmelerini sağlar.
+    /// </summary>
+    void AssignNPCPhysics()
+    {
+        // 1. Sahnedeki tüm NPCRunController'ları bul ve çöküş fiziğini aktif et
+        NPCRunController[] npcs = FindObjectsByType<NPCRunController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var npc in npcs)
+        {
+            if (npc != null)
+            {
+                npc.EnableCollapsePhysics();
+            }
+        }
+
+        // 2. male01 ve male02 objelerini isimle de tara (NPCRunController olmasa dahi kök objelere fizik ekle)
+        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var go in allObjects)
+        {
+            if (go == null) continue;
+            string n = go.name.ToLower();
+            if ((n.StartsWith("male01") || n.StartsWith("male02") || n.Contains("friend")) && go.transform.parent == null)
+            {
+                var runCtrl = go.GetComponent<NPCRunController>();
+                if (runCtrl != null)
+                {
+                    runCtrl.EnableCollapsePhysics();
+                }
+                else
+                {
+                    ApplyPhysicsToCharacter(go);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verilen karakter objesine doğrudan Rigidbody ve Collider ekleyip Animator'ı kapatır
+    /// ve yere savrulma torku uygular.
+    /// </summary>
+    public static void ApplyPhysicsToCharacter(GameObject character)
+    {
+        if (character == null) return;
+
+        Animator anim = character.GetComponent<Animator>() ?? character.GetComponentInChildren<Animator>();
+        if (anim != null) anim.enabled = false;
+
+        var cc = character.GetComponent<CharacterController>();
+        if (cc != null) cc.enabled = false;
+
+        CapsuleCollider col = character.GetComponent<CapsuleCollider>();
+        if (col == null) col = character.AddComponent<CapsuleCollider>();
+        col.enabled = true;
+        col.isTrigger = false;
+        col.height = 1.75f;
+        col.radius = 0.35f;
+        col.center = new Vector3(0f, 0.88f, 0f);
+
+        Rigidbody rb = character.GetComponent<Rigidbody>();
+        if (rb == null) rb = character.AddComponent<Rigidbody>();
+        rb.isKinematic = false;
+        rb.useGravity = true;
+        rb.mass = 70.0f;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+        rb.constraints = RigidbodyConstraints.None;
+
+        Vector3 randomToss = new Vector3(
+            Random.Range(-3.5f, 3.5f),
+            Random.Range(-1.0f, 1.8f),
+            Random.Range(-3.5f, 3.5f)
+        );
+        rb.AddForce(randomToss, ForceMode.Impulse);
+        rb.AddTorque(Random.insideUnitSphere * 15.0f, ForceMode.Impulse);
     }
 }

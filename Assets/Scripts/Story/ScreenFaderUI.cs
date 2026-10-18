@@ -54,6 +54,10 @@ public class ScreenFaderUI : MonoBehaviour
     // --- Durum Özellikleri ---
     public bool IsCountdownRunning { get; private set; }
     public float RemainingTime { get; private set; }
+    public bool IsCenterMessageActive => centerMessagePanel != null && centerMessagePanel.activeSelf;
+    public bool IsDeathScreenActive => deathScreenPanel != null && deathScreenPanel.activeSelf;
+    public float CurrentFaderAlpha => faderAlpha;
+    public bool IsFadedToBlack => faderAlpha >= 0.95f;
 
     // --- UI Bileşenleri ---
     private GameObject canvasRoot;
@@ -80,8 +84,19 @@ public class ScreenFaderUI : MonoBehaviour
     private Text countdownTimerText;
     private Action onCountdownExpiredCallback;
 
+    // Dramatik Ölüm / Kayıp Ekranı UI
+    private GameObject deathScreenPanel;
+    private CanvasGroup deathCanvasGroup;
+    private Text deathTitleText;
+    private Text deathReasonText;
+    private Text deathMissingNoticeText;
+    private Text deathLoopNoteText;
+    private Coroutine deathScreenRoutine;
+    private AudioSource proceduralAudioSource;
+
     // Coroutine Referansları
     private Coroutine fadeRoutine;
+    private Action pendingFadeCallback; // Fade iptal edilse bile bekleyen tamamlanma çağrısının kaybolmaması için
     private Coroutine flashRoutine;
     private Coroutine subtitleRoutine;
     private Coroutine centerMessageRoutine;
@@ -115,6 +130,7 @@ public class ScreenFaderUI : MonoBehaviour
     private void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
     {
         HideCenterMessage();
+        HideDeathScreen();
         StartCoroutine(EnsureUnfadedAfterSceneLoad());
     }
 
@@ -217,6 +233,9 @@ public class ScreenFaderUI : MonoBehaviour
 
         // 6. Merkez Dramatik Mesaj (Tam Orta - Siyah Perdenin Üstünde!)
         BuildCenterMessageUI(defaultFont);
+
+        // 7. Dramatik Ölüm / Kayıp Ekranı (Tam Ekran Kan Kırmızı / Siyah Perde)
+        BuildDeathScreenUI(defaultFont);
     }
 
     private void BuildCountdownUI(Font font)
@@ -401,6 +420,120 @@ public class ScreenFaderUI : MonoBehaviour
         centerMessagePanel.SetActive(false);
     }
 
+    private void BuildDeathScreenUI(Font font)
+    {
+        deathScreenPanel = new GameObject("DeathScreenPanel");
+        deathScreenPanel.transform.SetParent(canvasRoot.transform, false);
+
+        RectTransform rt = deathScreenPanel.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.sizeDelta = Vector2.zero;
+        rt.anchoredPosition = Vector2.zero;
+
+        Image bg = deathScreenPanel.AddComponent<Image>();
+        bg.color = new Color(0.10f, 0.02f, 0.02f, 0.96f); // Yoğun kan kırmızısı / siyah ton
+
+        deathCanvasGroup = deathScreenPanel.AddComponent<CanvasGroup>();
+        deathCanvasGroup.interactable = false;
+        deathCanvasGroup.blocksRaycasts = false;
+        deathCanvasGroup.alpha = 0f;
+
+        // Ortalanmış İçerik Kutusu
+        GameObject contentBox = new GameObject("DeathContentBox");
+        contentBox.transform.SetParent(deathScreenPanel.transform, false);
+        RectTransform cRt = contentBox.AddComponent<RectTransform>();
+        cRt.anchorMin = new Vector2(0.5f, 0.5f);
+        cRt.anchorMax = new Vector2(0.5f, 0.5f);
+        cRt.pivot = new Vector2(0.5f, 0.5f);
+        cRt.sizeDelta = new Vector2(1100f, 600f);
+
+        VerticalLayoutGroup layout = contentBox.AddComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(40, 40, 30, 30);
+        layout.spacing = 18f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        ContentSizeFitter fitter = contentBox.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        // 1. Üst Uyarı İbaresi
+        GameObject alertObj = new GameObject("AlertLabel");
+        alertObj.transform.SetParent(contentBox.transform, false);
+        Text alertText = alertObj.AddComponent<Text>();
+        alertText.font = font;
+        alertText.fontSize = 18;
+        alertText.fontStyle = FontStyle.Bold;
+        alertText.color = new Color(1f, 0.35f, 0.35f, 0.9f);
+        alertText.alignment = TextAnchor.MiddleCenter;
+        alertText.text = "— ENKAZ ALTINDA KRİTİK EKSİKLİK —";
+        alertText.supportRichText = true;
+
+        // 2. Büyük Dramatik Başlık
+        GameObject titleObj = new GameObject("DeathTitle");
+        titleObj.transform.SetParent(contentBox.transform, false);
+        deathTitleText = titleObj.AddComponent<Text>();
+        deathTitleText.font = font;
+        deathTitleText.fontSize = 44;
+        deathTitleText.fontStyle = FontStyle.Bold;
+        deathTitleText.color = new Color(0.98f, 0.18f, 0.18f, 1f); // Parlak Kan Kırmızısı
+        deathTitleText.alignment = TextAnchor.MiddleCenter;
+        deathTitleText.text = "HAYATINI KAYBETTİN";
+        deathTitleText.supportRichText = true;
+
+        LayoutElement titleLayout = titleObj.AddComponent<LayoutElement>();
+        titleLayout.preferredWidth = 1000f;
+
+        // 3. Detaylı Ölüm / Kayıp Gerekçesi
+        GameObject reasonObj = new GameObject("DeathReason");
+        reasonObj.transform.SetParent(contentBox.transform, false);
+        deathReasonText = reasonObj.AddComponent<Text>();
+        deathReasonText.font = font;
+        deathReasonText.fontSize = 22;
+        deathReasonText.fontStyle = FontStyle.Italic;
+        deathReasonText.color = new Color(0.95f, 0.95f, 0.98f, 1f);
+        deathReasonText.alignment = TextAnchor.MiddleCenter;
+        deathReasonText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        deathReasonText.verticalOverflow = VerticalWrapMode.Overflow;
+        deathReasonText.supportRichText = true;
+
+        LayoutElement reasonLayout = reasonObj.AddComponent<LayoutElement>();
+        reasonLayout.preferredWidth = 1000f;
+
+        // 4. Eksik Eşyalar Vurgusu
+        GameObject missingObj = new GameObject("MissingNotice");
+        missingObj.transform.SetParent(contentBox.transform, false);
+        deathMissingNoticeText = missingObj.AddComponent<Text>();
+        deathMissingNoticeText.font = font;
+        deathMissingNoticeText.fontSize = 18;
+        deathMissingNoticeText.fontStyle = FontStyle.Bold;
+        deathMissingNoticeText.color = new Color(1f, 0.72f, 0.22f, 1f); // Sarı/Amber uyarısı
+        deathMissingNoticeText.alignment = TextAnchor.MiddleCenter;
+        deathMissingNoticeText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        deathMissingNoticeText.verticalOverflow = VerticalWrapMode.Overflow;
+        deathMissingNoticeText.supportRichText = true;
+
+        LayoutElement missingLayout = missingObj.AddComponent<LayoutElement>();
+        missingLayout.preferredWidth = 1000f;
+
+        // 5. Zaman Döngüsü Alt Notu
+        GameObject loopNoteObj = new GameObject("LoopNote");
+        loopNoteObj.transform.SetParent(contentBox.transform, false);
+        deathLoopNoteText = loopNoteObj.AddComponent<Text>();
+        deathLoopNoteText.font = font;
+        deathLoopNoteText.fontSize = 16;
+        deathLoopNoteText.color = new Color(0.70f, 0.72f, 0.80f, 0.85f);
+        deathLoopNoteText.alignment = TextAnchor.MiddleCenter;
+        deathLoopNoteText.text = "Zaman döngüsü başa sarılıyor... Hazırlık hayat kurtarır.";
+        deathLoopNoteText.supportRichText = true;
+
+        deathScreenPanel.SetActive(false);
+    }
+
     #endregion
 
     #region Fade Fonksiyonları
@@ -434,8 +567,21 @@ public class ScreenFaderUI : MonoBehaviour
             fadeRoutine = null;
         }
 
+        // Fade iptal edilse bile bekleyen tamamlanma çağrısını tetikle: geçiş yapan sistemler kilitli kalmasın.
+        InvokePendingFadeCallback();
+
         faderAlpha = isBlack ? 1f : 0f;
         ApplyFaderAlpha();
+    }
+
+    /// <summary>
+    /// Bekleyen fade tamamlanma çağrısı varsa tetikler ve temizler.
+    /// </summary>
+    private void InvokePendingFadeCallback()
+    {
+        Action callback = pendingFadeCallback;
+        pendingFadeCallback = null;
+        callback?.Invoke();
     }
 
     private void ApplyFaderAlpha()
@@ -452,13 +598,18 @@ public class ScreenFaderUI : MonoBehaviour
 
     private IEnumerator FadeRoutine(float targetAlpha, float duration, Action onComplete)
     {
+        // Önceki fade iptal edildiyse onun bekleyen çağrısını kaybetme.
+        InvokePendingFadeCallback();
+        pendingFadeCallback = onComplete;
+
         float startAlpha = faderAlpha;
 
         if (duration <= 0.001f)
         {
             faderAlpha = targetAlpha;
             ApplyFaderAlpha();
-            onComplete?.Invoke();
+            fadeRoutine = null;
+            InvokePendingFadeCallback();
             yield break;
         }
 
@@ -475,7 +626,7 @@ public class ScreenFaderUI : MonoBehaviour
         faderAlpha = targetAlpha;
         ApplyFaderAlpha();
         fadeRoutine = null;
-        onComplete?.Invoke();
+        InvokePendingFadeCallback();
     }
 
     #endregion
@@ -687,6 +838,135 @@ public class ScreenFaderUI : MonoBehaviour
 
     #endregion
 
+    #region Dramatik Ölüm / Kayıp Ekranı
+
+    /// <summary>
+    /// Çantada eksik hayati eşya olduğunda dramatik ölüm/kayıp ekranını gösterir.
+    /// Ekranda gerekçe ve eksik eşyalar yazar, süre bitiminde onComplete çağrılır.
+    /// </summary>
+    public void ShowDeathScreen(string title, string reason, string missingItemsNotice = "", float duration = 6.5f, Action onComplete = null)
+    {
+        if (deathScreenPanel == null) BuildUI();
+
+        if (deathScreenRoutine != null) StopCoroutine(deathScreenRoutine);
+        deathScreenRoutine = StartCoroutine(ShowDeathScreenRoutine(title, reason, missingItemsNotice, duration, onComplete));
+    }
+
+    /// <summary>
+    /// Ölüm ekranını kapatır.
+    /// </summary>
+    public void HideDeathScreen()
+    {
+        if (deathScreenRoutine != null)
+        {
+            StopCoroutine(deathScreenRoutine);
+            deathScreenRoutine = null;
+        }
+
+        if (deathScreenPanel != null)
+        {
+            deathCanvasGroup.alpha = 0f;
+            deathScreenPanel.SetActive(false);
+        }
+    }
+
+    private IEnumerator ShowDeathScreenRoutine(string title, string reason, string missingItemsNotice, float duration, Action onComplete)
+    {
+        deathScreenPanel.SetActive(true);
+        deathCanvasGroup.alpha = 0f;
+
+        if (deathTitleText != null) deathTitleText.text = title;
+        if (deathReasonText != null) deathReasonText.text = reason;
+
+        bool hasMissing = !string.IsNullOrEmpty(missingItemsNotice);
+        if (deathMissingNoticeText != null)
+        {
+            deathMissingNoticeText.gameObject.SetActive(hasMissing);
+            if (hasMissing) deathMissingNoticeText.text = missingItemsNotice;
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(deathScreenPanel.GetComponent<RectTransform>());
+
+        // Dramatik kalp atışı ve glitch efekti
+        PlayProceduralDeathAudio();
+        FlashGlitch(0.4f);
+
+        // Yumuşak beliriş (0.6 saniye)
+        float fadeInTime = 0.6f;
+        float elapsed = 0f;
+        while (elapsed < fadeInTime)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            deathCanvasGroup.alpha = Mathf.Clamp01(elapsed / fadeInTime);
+            yield return null;
+        }
+        deathCanvasGroup.alpha = 1f;
+
+        // Ekranda kalma süresi
+        if (duration > 0f)
+        {
+            float waitTimer = duration;
+            while (waitTimer > 0f)
+            {
+                waitTimer -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            // Siyaha tam karartma (1.5 saniye)
+            float fadeOutTime = 1.5f;
+            elapsed = 0f;
+            FadeToBlack(fadeOutTime);
+
+            while (elapsed < fadeOutTime)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            deathCanvasGroup.alpha = 0f;
+            deathScreenPanel.SetActive(false);
+        }
+
+        deathScreenRoutine = null;
+        onComplete?.Invoke();
+    }
+
+    private void PlayProceduralDeathAudio()
+    {
+        if (proceduralAudioSource == null)
+        {
+            proceduralAudioSource = gameObject.AddComponent<AudioSource>();
+            proceduralAudioSource.playOnAwake = false;
+        }
+
+        try
+        {
+            int sampleRate = 44100;
+            float length = 1.2f;
+            int totalSamples = (int)(sampleRate * length);
+            float[] data = new float[totalSamples];
+
+            for (int i = 0; i < totalSamples; i++)
+            {
+                float t = (float)i / sampleRate;
+                // İki boğuk kalp vuruşu (55Hz ve 48Hz)
+                float pulse1 = Mathf.Exp(-t * 16f) * Mathf.Sin(2f * Mathf.PI * 55f * t);
+                float pulse2 = (t > 0.35f) ? Mathf.Exp(-(t - 0.35f) * 16f) * Mathf.Sin(2f * Mathf.PI * 48f * (t - 0.35f)) : 0f;
+                data[i] = (pulse1 + pulse2) * 0.7f;
+            }
+
+            AudioClip clip = AudioClip.Create("DeathHeartbeat", totalSamples, 1, sampleRate, false);
+            clip.SetData(data, 0);
+            proceduralAudioSource.PlayOneShot(clip, 0.9f);
+        }
+        catch (Exception)
+        {
+            // Ses üretilemezse sessizce devam et
+        }
+    }
+
+    #endregion
+
     #region Geri Sayım Sayacı
 
     /// <summary>
@@ -775,5 +1055,8 @@ public class ScreenFaderUI : MonoBehaviour
 
     [ContextMenu("Test: Start Countdown (30s)")]
     private void TestCountdown() => StartCountdown(30f, () => Debug.Log("Sayaç bitti!"));
+
+    [ContextMenu("Test: Death Screen (5s)")]
+    private void TestDeathScreen() => ShowDeathScreen("HAYATINI KAYBETTİN", "Deprem çantanda düdük olmadığı için sesini AFAD ekiplerine duyuramadın...", "[ Eksik Hayati Eşyalar: Deprem Düdüğü ]", 5f);
     #endregion
 }

@@ -49,6 +49,9 @@ public class StoryInteractable : MonoBehaviour
     [Tooltip("Açık olduğunda objenin üzerinde ufak bir sarı/turuncu hedef işareti veya GUI göstergesi çizer.")]
     public bool highlightMarker = false;
 
+    [Tooltip("Bu objeye ait ek collider'lar (Örn: ilişkili kapı modeli). Raycast/LOS kontrolünde engel sayılmazlar.")]
+    public Collider[] linkedColliders;
+
     [Header("--- Görsel Ofsetler ---")]
     [Tooltip("Marker göstergesinin objenin merkezine göre dikey ofseti.")]
     public float markerHeightOffset = 0.4f;
@@ -72,6 +75,10 @@ public class StoryInteractable : MonoBehaviour
     private void Awake()
     {
         cachedCollider = GetComponent<Collider>();
+        if (cachedCollider == null)
+        {
+            cachedCollider = GetComponentInChildren<Collider>();
+        }
         if (interactableType == InteractableType.Poster)
         {
             requireRaycastDirectHit = true;
@@ -140,6 +147,12 @@ public class StoryInteractable : MonoBehaviour
         }
 
         Vector3 camPos = playerCam.position;
+        if (cachedCollider == null)
+        {
+            cachedCollider = GetComponentInChildren<Collider>();
+        }
+
+        Vector3 centerPoint = (cachedCollider != null) ? cachedCollider.bounds.center : transform.position;
         Vector3 targetPoint = transform.position;
         if (cachedCollider != null)
         {
@@ -162,9 +175,10 @@ public class StoryInteractable : MonoBehaviour
 
         if (requireFacing)
         {
-            Vector3 dirToTarget = (transform.position - camPos).normalized;
+            Vector3 dirToTarget = (targetPoint - camPos).normalized;
             float dot = Vector3.Dot(playerCam.forward, dirToTarget);
-            if (dot < 0.35f)
+            float minDot = (interactableType == InteractableType.HomeEntrance) ? 0.15f : 0.35f;
+            if (dot < minDot)
             {
                 if (CurrentFocused == this) CurrentFocused = null;
                 return;
@@ -190,7 +204,7 @@ public class StoryInteractable : MonoBehaviour
                     if (hitCol == null) continue;
 
                     // Oyuncunun kendi collider'larını atla
-                    if (playerCam != null && (hitCol.transform.root == playerCam.root || hitCol.CompareTag("Player")))
+                    if (IsPlayerCollider(hitCol))
                         continue;
 
                     // Bu StoryInteractable'a ait bir collider'a çarptıysa -> DOĞRUDAN ENGELSİZ İSABET!
@@ -199,6 +213,11 @@ public class StoryInteractable : MonoBehaviour
                         directHitValid = true;
                         break;
                     }
+
+                    // Görünmez sınır bloklarını (Cube 5 gibi Renderer'ı kapalı objeler) atla
+                    MeshRenderer mr = hitCol.GetComponent<MeshRenderer>();
+                    if (mr == null || !mr.enabled)
+                        continue;
 
                     // Eğer StoryInteractable olmayan başka bir trigger ise (örneğin alan trigger'ı) es geç
                     if (hitCol.isTrigger && hitCol.GetComponentInParent<StoryInteractable>() == null)
@@ -218,17 +237,12 @@ public class StoryInteractable : MonoBehaviour
         }
         else
         {
-            // Normal etkileşimlerde de duvar arkasından tetiklenmeyi önlemek için Line-of-Sight kontrolü
-            Vector3 dirToTarget = (targetPoint - camPos).normalized;
-            float distToTarget = Vector3.Distance(camPos, targetPoint);
-            if (Physics.Raycast(camPos, dirToTarget, out RaycastHit losHit, distToTarget, ~0, QueryTriggerInteraction.Ignore))
+            // Duvar arkasından etkileşimi kesin olarak engellemek için RaycastAll / Line-of-sight kontrolü
+            bool hasLos = HasLineOfSight(camPos, targetPoint) || HasLineOfSight(camPos, centerPoint);
+            if (!hasLos)
             {
-                if (!IsMyCollider(losHit.collider) && (playerCam == null || losHit.collider.transform.root != playerCam.root) && !losHit.collider.CompareTag("Player"))
-                {
-                    // Duvar veya başka katı bir engel görüşü tamamen kapatıyor
-                    if (CurrentFocused == this) CurrentFocused = null;
-                    return;
-                }
+                if (CurrentFocused == this) CurrentFocused = null;
+                return;
             }
         }
 
@@ -251,11 +265,12 @@ public class StoryInteractable : MonoBehaviour
             else
             {
                 float myDist = dist;
-                Vector3 myDir = (transform.position - camPos).normalized;
+                Vector3 myDir = (centerPoint - camPos).normalized;
                 float myDot = Vector3.Dot(playerCam.forward, myDir);
 
-                float otherDist = Vector3.Distance(camPos, CurrentFocused.cachedCollider != null ? CurrentFocused.cachedCollider.ClosestPoint(camPos) : CurrentFocused.transform.position);
-                Vector3 otherDir = (CurrentFocused.transform.position - camPos).normalized;
+                Vector3 otherCenter = CurrentFocused.cachedCollider != null ? CurrentFocused.cachedCollider.bounds.center : CurrentFocused.transform.position;
+                float otherDist = Vector3.Distance(camPos, CurrentFocused.cachedCollider != null ? CurrentFocused.cachedCollider.ClosestPoint(camPos) : otherCenter);
+                Vector3 otherDir = (otherCenter - camPos).normalized;
                 float otherDot = Vector3.Dot(playerCam.forward, otherDir);
 
                 // Daha yüksek dot ve daha düşük mesafe önceliğe sahiptir
@@ -270,12 +285,74 @@ public class StoryInteractable : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Oyuncu kamerası ile hedef nokta arasında katı duvar/engel olup olmadığını kontrol eder.
+    /// </summary>
+    public bool HasLineOfSight(Vector3 camPos, Vector3 targetPoint)
+    {
+        Vector3 dir = targetPoint - camPos;
+        float dist = dir.magnitude;
+        if (dist <= 0.05f) return true;
+        dir /= dist;
+
+        RaycastHit[] hits = Physics.RaycastAll(camPos, dir, Mathf.Max(0.01f, dist - 0.05f), ~0, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0) return true;
+
+        Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hitCol = hits[i].collider;
+            if (hitCol == null) continue;
+
+            if (IsPlayerCollider(hitCol)) continue;
+            if (IsMyCollider(hitCol)) continue;
+            if (hitCol.isTrigger) continue;
+
+            // Görünmez sınır bloklarını (Cube 5 gibi Renderer'ı kapalı veya olmayan objeler) atla
+            MeshRenderer mr = hitCol.GetComponent<MeshRenderer>();
+            if (mr == null || !mr.enabled) continue;
+
+            // Kapı ve bina girişlerinde (HomeEntrance) kapı kasasının kenarı veya hedef noktasının hemen arkasındaki yüzey görüşü engellemez
+            if (interactableType == InteractableType.HomeEntrance)
+            {
+                // Eğer çarpma mesafesi hedefin çok yakınındaysa (son 35 cm) engel sayma
+                if (hits[i].distance >= dist - 0.35f) continue;
+            }
+
+            // Katı bir duvar veya engel var, görüş engellendi!
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool IsPlayerCollider(Collider col)
+    {
+        if (col == null) return false;
+        if (playerCam != null)
+        {
+            if (col.transform == playerCam || col.transform.IsChildOf(playerCam)) return true;
+            if (col.transform.root == playerCam.root) return true;
+        }
+        if (col.CompareTag("Player")) return true;
+        if (col.GetComponentInParent<FirstPersonMovement>() != null) return true;
+        return false;
+    }
+
     private bool IsMyCollider(Collider col)
     {
         if (col == null) return false;
         if (col == cachedCollider) return true;
         if (col.transform == transform || col.transform.IsChildOf(transform)) return true;
         if (col.GetComponentInParent<StoryInteractable>() == this) return true;
+        if (linkedColliders != null)
+        {
+            for (int i = 0; i < linkedColliders.Length; i++)
+            {
+                if (linkedColliders[i] == col) return true;
+            }
+        }
         return false;
     }
 
@@ -284,15 +361,20 @@ public class StoryInteractable : MonoBehaviour
     /// </summary>
     private bool IsEPressed()
     {
+        bool pressed = false;
 #if ENABLE_INPUT_SYSTEM
         if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
-            return true;
+            pressed = true;
         if (Gamepad.current != null && Gamepad.current.buttonWest.wasPressedThisFrame)
-            return true;
-        return false;
-#else
-        return Input.GetKeyDown(KeyCode.E);
+            pressed = true;
 #endif
+        try
+        {
+            if (Input.GetKeyDown(KeyCode.E))
+                pressed = true;
+        }
+        catch { }
+        return pressed;
     }
 
     /// <summary>

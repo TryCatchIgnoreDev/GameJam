@@ -245,6 +245,155 @@ public class CameraEffectsController : MonoBehaviour
         pulseCoroutine = null;
     }
 
+    #region --- Poster Odaklanma & Zoom Kadrajı (Cinematic Zoom) ---
+
+    private bool isPosterFocusActive = false;
+    private Vector3 preZoomCamPos = Vector3.zero;
+    private Quaternion preZoomCamRot = Quaternion.identity;
+    private float preZoomFov = 60f;
+
+    /// <summary>
+    /// Postere doğru yumuşak, temiz bir yakınlaştırma (smooth zoom-in FOV ve kamera hareketi) başlatır.
+    /// focusOnBottomRight false ise postere genel yumuşak odaklanma (1. bakış).
+    /// focusOnBottomRight true ise posterin sağ altındaki "O gün binlerce insan bana bir şey olmaz diyerek uyudu." yazısına ekstra odaklanan detay kadrajı (2. bakış).
+    /// Sarsıntılar (shake) tamamen kapatılır.
+    /// </summary>
+    public IEnumerator FocusOnPosterRoutine(Transform posterTransform, bool focusOnBottomRight, float duration = 0f)
+    {
+        // 1. Ekran sarsıntılarını tamamen durdur ve sıfırla
+        StopEarthquakeShake();
+        isPulseShaking = false;
+        pulseIntensity = 0f;
+
+        if (targetCamera == null)
+        {
+            targetCamera = Camera.main != null ? Camera.main : FindFirstObjectByType<Camera>();
+        }
+        if (targetCamera == null || posterTransform == null) yield break;
+
+        isPosterFocusActive = true;
+
+        // 2. Oyuncu hareket ve bakış kontrollerini geçici olarak durdur
+        FirstPersonMovement fpm = FindFirstObjectByType<FirstPersonMovement>();
+        if (fpm != null) fpm.enabled = false;
+
+        FirstPersonLook fpl = FindFirstObjectByType<FirstPersonLook>();
+        if (fpl != null) fpl.enabled = false;
+
+        Transform camTr = targetCamera.transform;
+        preZoomCamPos = camTr.position;
+        preZoomCamRot = camTr.rotation;
+        preZoomFov = targetCamera.fieldOfView > 10f ? targetCamera.fieldOfView : baseFOV;
+
+        // 3. Hedef kadraj noktasını ve hedef FOV'yi hesapla
+        Vector3 posterCenter = posterTransform.position;
+        Vector3 toCam = preZoomCamPos - posterCenter;
+        float distToPoster = toCam.magnitude;
+        Vector3 toCamNorm = distToPoster > 0.001f ? toCam.normalized : posterTransform.forward;
+
+        // İzleyici bakış açısına göre sağ ve alt yönler
+        Vector3 viewerRight = Vector3.Cross(toCamNorm, Vector3.up).normalized;
+        Vector3 viewerDown = Vector3.down;
+
+        Vector3 targetPoint;
+        float targetFov;
+        float forwardNudge;
+
+        if (focusOnBottomRight)
+        {
+            // 2. BAKIŞ: Posterin sağ altındaki "O gün binlerce insan..." yazısına ekstra odaklanan zoom/detay kadrajı
+            // Standart poster boyutu ~1.4m x 0.7m
+            targetPoint = posterCenter + (viewerRight * 0.38f) + (viewerDown * 0.18f);
+            targetFov = 18f; // Ekstra odaklanan dar açı
+            forwardNudge = Mathf.Clamp(distToPoster * 0.28f, 0.25f, 0.55f);
+        }
+        else
+        {
+            // 1. BAKIŞ: Postere genel yumuşak, temiz yakınlaştırma
+            targetPoint = posterCenter;
+            targetFov = 36f; // Temiz poster odak açısı
+            forwardNudge = Mathf.Clamp(distToPoster * 0.20f, 0.15f, 0.40f);
+        }
+
+        Vector3 targetCamPos = preZoomCamPos - (toCamNorm * forwardNudge);
+        Quaternion targetCamRot = Quaternion.LookRotation((targetPoint - targetCamPos).normalized, Vector3.up);
+
+        // 4. Yumuşak geçişle kamerayı ve FOV'yi hedefe kaydır (0.85 sn)
+        float zoomInTime = 0.85f;
+        float elapsed = 0f;
+        while (elapsed < zoomInTime)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / zoomInTime);
+            float smoothT = Mathf.SmoothStep(0f, 1f, t);
+
+            camTr.position = Vector3.Lerp(preZoomCamPos, targetCamPos, smoothT);
+            camTr.rotation = Quaternion.Slerp(preZoomCamRot, targetCamRot, smoothT);
+            targetCamera.fieldOfView = Mathf.Lerp(preZoomFov, targetFov, smoothT);
+
+            yield return null;
+        }
+
+        camTr.position = targetCamPos;
+        camTr.rotation = targetCamRot;
+        targetCamera.fieldOfView = targetFov;
+
+        if (duration > 0f)
+        {
+            yield return new WaitForSeconds(duration);
+        }
+    }
+
+    /// <summary>
+    /// Postere odaklanan kamerayı yumuşakça orijinal pozisyona, açıya ve FOV'ye döndürür.
+    /// </summary>
+    public IEnumerator ReturnFromPosterFocusRoutine(float returnDuration = 0.8f)
+    {
+        if (!isPosterFocusActive || targetCamera == null) yield break;
+
+        Transform camTr = targetCamera.transform;
+        Vector3 startPos = camTr.position;
+        Quaternion startRot = camTr.rotation;
+        float startFov = targetCamera.fieldOfView;
+
+        float elapsed = 0f;
+        while (elapsed < returnDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / returnDuration);
+            float smoothT = Mathf.SmoothStep(0f, 1f, t);
+
+            camTr.position = Vector3.Lerp(startPos, preZoomCamPos, smoothT);
+            camTr.rotation = Quaternion.Slerp(startRot, preZoomCamRot, smoothT);
+            targetCamera.fieldOfView = Mathf.Lerp(startFov, preZoomFov, smoothT);
+
+            yield return null;
+        }
+
+        camTr.position = preZoomCamPos;
+        camTr.rotation = preZoomCamRot;
+        targetCamera.fieldOfView = preZoomFov;
+
+        // Oyuncu kontrollerini yeniden aç ve mouse rotasyonunu sıçrama yapmayacak şekilde senkronize et
+        FirstPersonLook fpl = FindFirstObjectByType<FirstPersonLook>();
+        if (fpl != null)
+        {
+            fpl.SyncRotation(preZoomCamRot);
+            fpl.enabled = true;
+        }
+
+        FirstPersonMovement fpm = FindFirstObjectByType<FirstPersonMovement>();
+        if (fpm != null)
+        {
+            fpm.enabled = true;
+        }
+
+        isPosterFocusActive = false;
+    }
+
+    #endregion
+
+
     /// <summary>
     /// Final sahnede oyuncu kontrolünü kapatıp kamerayı yukarıya/dışarıya yumuşakça kaydırır.
     /// </summary>

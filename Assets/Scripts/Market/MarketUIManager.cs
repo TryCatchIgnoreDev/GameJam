@@ -134,10 +134,25 @@ namespace GameJam.Market
         private void FindPlayerScripts()
         {
             if (playerMovement == null)
-                playerMovement = FindFirstObjectByType<FirstPersonMovement>();
+            {
+                playerMovement = FindFirstObjectByType<FirstPersonMovement>(FindObjectsInactive.Include);
+            }
 
             if (playerLook == null)
-                playerLook = FindFirstObjectByType<FirstPersonLook>();
+            {
+                if (playerMovement != null)
+                {
+                    playerLook = playerMovement.GetComponentInChildren<FirstPersonLook>(true);
+                }
+                if (playerLook == null && Camera.main != null)
+                {
+                    playerLook = Camera.main.GetComponentInParent<FirstPersonLook>() ?? Camera.main.GetComponent<FirstPersonLook>();
+                }
+                if (playerLook == null)
+                {
+                    playerLook = FindFirstObjectByType<FirstPersonLook>(FindObjectsInactive.Include);
+                }
+            }
         }
 
         /// <summary>
@@ -351,9 +366,39 @@ namespace GameJam.Market
             if (marketRootPanel != null)
                 marketRootPanel.SetActive(true);
 
-            if (playerMovement != null) playerMovement.enabled = false;
-            if (playerLook != null) playerLook.enabled = false;
+            // Oyuncu hareketini tamamen durdur ve devre dışı bırak
+            if (playerMovement != null)
+            {
+                playerMovement.StopMovement();
+                playerMovement.enabled = false;
+            }
+            var allMovements = FindObjectsByType<FirstPersonMovement>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var m in allMovements)
+            {
+                if (m != null)
+                {
+                    m.StopMovement();
+                    m.enabled = false;
+                }
+            }
 
+            // Kamera dönmesini durdur, input birikimini sıfırla ve devre dışı bırak
+            if (playerLook != null)
+            {
+                playerLook.ResetLookInput();
+                playerLook.enabled = false;
+            }
+            var allLooks = FindObjectsByType<FirstPersonLook>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var l in allLooks)
+            {
+                if (l != null)
+                {
+                    l.ResetLookInput();
+                    l.enabled = false;
+                }
+            }
+
+            // UI için imleci serbest bırak
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
@@ -376,11 +421,43 @@ namespace GameJam.Market
             if (marketRootPanel != null)
                 marketRootPanel.SetActive(false);
 
+            // Oyun kontrolü için imleci tekrar kilitle
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
 
-            if (playerMovement != null) playerMovement.enabled = true;
-            if (playerLook != null) playerLook.enabled = true;
+            // Oyuncu hareketini tekrar aç
+            if (playerMovement != null)
+            {
+                playerMovement.StopMovement();
+                playerMovement.enabled = true;
+            }
+            var allMovements = FindObjectsByType<FirstPersonMovement>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var m in allMovements)
+            {
+                if (m != null)
+                {
+                    m.StopMovement();
+                    m.enabled = true;
+                }
+            }
+
+            // Kamera bakışını tekrar aç ve mevcut karakter açısıyla senkronize et
+            if (playerLook != null)
+            {
+                playerLook.ResetLookInput();
+                playerLook.SyncRotationWithCharacter();
+                playerLook.enabled = true;
+            }
+            var allLooks = FindObjectsByType<FirstPersonLook>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var l in allLooks)
+            {
+                if (l != null)
+                {
+                    l.ResetLookInput();
+                    l.SyncRotationWithCharacter();
+                    l.enabled = true;
+                }
+            }
         }
 
         public void CompleteShopping()
@@ -408,6 +485,14 @@ namespace GameJam.Market
         public bool HasWhistle() => HasEssentialItem("whistle");
 
         public bool HasFlashlight() => HasEssentialItem("flashlight");
+
+        public bool HasWater() => HasEssentialItem("water_jug");
+
+        public bool HasSleepingBag() => HasEssentialItem("sleeping_bag");
+
+        public bool HasCannedFood() => HasEssentialItem("canned_food");
+
+        public bool HasFirstAid() => HasEssentialItem("first_aid");
 
         public int GetPlacedEssentialCount()
         {
@@ -439,7 +524,7 @@ namespace GameJam.Market
 
         public bool HasAllCoreEssentials()
         {
-            return HasWhistle() && HasFlashlight() && GetPlacedEssentialCount() >= 5;
+            return HasWhistle() && HasFlashlight() && HasWater() && HasSleepingBag() && HasCannedFood() && HasFirstAid();
         }
 
         #endregion

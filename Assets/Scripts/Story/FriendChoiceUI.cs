@@ -65,8 +65,12 @@ public class FriendChoiceUI : MonoBehaviour
         GameObject go = new GameObject("FriendChoiceUI");
         Instance = go.AddComponent<FriendChoiceUI>();
         Instance.EnsureInitialized();
-        DontDestroyOnLoad(go);
+        if (Application.isPlaying)
+        {
+            DontDestroyOnLoad(go);
+        }
         return Instance;
+
     }
 
     private void Awake()

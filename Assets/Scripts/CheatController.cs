@@ -16,10 +16,10 @@ public class CheatController : MonoBehaviour
 {
     [Header("--- Hile Sistemi Genel Ayarlar ---")]
     [Tooltip("Hile sistemini tamamen açıp kapatır.")]
-    public bool enableCheats = true;
+    public bool enableCheats = false;
 
     [Tooltip("Ekranın sol üstünde hile tuşlarını gösteren küçük bir rehber arayüzü çizsin mi?")]
-    public bool showCheatOverlay = true;
+    public bool showCheatOverlay = false;
 
     [Header("--- Event Tetikleme Tuşları (Trigger Cheats) ---")]
 #if ENABLE_INPUT_SYSTEM
