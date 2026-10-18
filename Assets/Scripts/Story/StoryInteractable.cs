@@ -43,6 +43,9 @@ public class StoryInteractable : MonoBehaviour
     [Tooltip("Etkileşim için oyuncunun objeye doğru bakması zorunlu mu?")]
     public bool requireFacing = true;
 
+    [Tooltip("Etkileşim ve alttaki prompt yazısı için kameradan doğrudan raycast isabeti şartı. Hiçbir engele çarpmadan doğrudan bu trigera çarpması gerekir.")]
+    public bool requireRaycastDirectHit = false;
+
     [Tooltip("Açık olduğunda objenin üzerinde ufak bir sarı/turuncu hedef işareti veya GUI göstergesi çizer.")]
     public bool highlightMarker = false;
 
@@ -69,6 +72,10 @@ public class StoryInteractable : MonoBehaviour
     private void Awake()
     {
         cachedCollider = GetComponent<Collider>();
+        if (interactableType == InteractableType.Poster)
+        {
+            requireRaycastDirectHit = true;
+        }
     }
 
     private void OnEnable()
@@ -122,6 +129,7 @@ public class StoryInteractable : MonoBehaviour
 
     /// <summary>
     /// Kameraya en uygun açıda ve mesafedeki objeyi odaklanan obje olarak belirler.
+    /// Raycast kontrolü ile engellerin arkasından tetiklenmeyi ve prompt gösterilmesini önler.
     /// </summary>
     private void UpdateFocusTarget()
     {
@@ -163,6 +171,67 @@ public class StoryInteractable : MonoBehaviour
             }
         }
 
+        // Raycast Kontrolü:
+        bool useDirectRaycast = requireRaycastDirectHit || (interactableType == InteractableType.Poster);
+        if (useDirectRaycast)
+        {
+            // Kamera merkezinden (crosshair) ileriye doğru doğrudan raycast fırlat
+            Ray ray = new Ray(camPos, playerCam.forward);
+            RaycastHit[] hits = Physics.RaycastAll(ray, interactDistance, ~0, QueryTriggerInteraction.Collide);
+            bool directHitValid = false;
+
+            if (hits != null && hits.Length > 0)
+            {
+                Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+                for (int i = 0; i < hits.Length; i++)
+                {
+                    Collider hitCol = hits[i].collider;
+                    if (hitCol == null) continue;
+
+                    // Oyuncunun kendi collider'larını atla
+                    if (playerCam != null && (hitCol.transform.root == playerCam.root || hitCol.CompareTag("Player")))
+                        continue;
+
+                    // Bu StoryInteractable'a ait bir collider'a çarptıysa -> DOĞRUDAN ENGELSİZ İSABET!
+                    if (IsMyCollider(hitCol))
+                    {
+                        directHitValid = true;
+                        break;
+                    }
+
+                    // Eğer StoryInteractable olmayan başka bir trigger ise (örneğin alan trigger'ı) es geç
+                    if (hitCol.isTrigger && hitCol.GetComponentInParent<StoryInteractable>() == null)
+                        continue;
+
+                    // Katı bir engel (duvar, mobilya, kapı vs.) veya başka bir nesneye çarptı, görüş tıkandı!
+                    directHitValid = false;
+                    break;
+                }
+            }
+
+            if (!directHitValid)
+            {
+                if (CurrentFocused == this) CurrentFocused = null;
+                return;
+            }
+        }
+        else
+        {
+            // Normal etkileşimlerde de duvar arkasından tetiklenmeyi önlemek için Line-of-Sight kontrolü
+            Vector3 dirToTarget = (targetPoint - camPos).normalized;
+            float distToTarget = Vector3.Distance(camPos, targetPoint);
+            if (Physics.Raycast(camPos, dirToTarget, out RaycastHit losHit, distToTarget, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (!IsMyCollider(losHit.collider) && (playerCam == null || losHit.collider.transform.root != playerCam.root) && !losHit.collider.CompareTag("Player"))
+                {
+                    // Duvar veya başka katı bir engel görüşü tamamen kapatıyor
+                    if (CurrentFocused == this) CurrentFocused = null;
+                    return;
+                }
+            }
+        }
+
         // Eğer mevcut odak boşsa veya bu obje mevcut odaktan daha yakın/odaklıysa
         if (CurrentFocused == null || CurrentFocused == this)
         {
@@ -174,23 +243,40 @@ public class StoryInteractable : MonoBehaviour
         }
         else
         {
-            float myDist = dist;
-            Vector3 myDir = (transform.position - camPos).normalized;
-            float myDot = Vector3.Dot(playerCam.forward, myDir);
-
-            float otherDist = Vector3.Distance(camPos, CurrentFocused.cachedCollider != null ? CurrentFocused.cachedCollider.ClosestPoint(camPos) : CurrentFocused.transform.position);
-            Vector3 otherDir = (CurrentFocused.transform.position - camPos).normalized;
-            float otherDot = Vector3.Dot(playerCam.forward, otherDir);
-
-            // Daha yüksek dot ve daha düşük mesafe önceliğe sahiptir
-            float myScore = myDot * 1.5f - (myDist / interactDistance);
-            float otherScore = otherDot * 1.5f - (otherDist / CurrentFocused.interactDistance);
-
-            if (myScore > otherScore)
+            // Eğer bu obje direct raycast ile tam ortadan vuruluyorsa ama mevcut odak direct raycast değilse, buna öncelik ver
+            if (useDirectRaycast && !CurrentFocused.requireRaycastDirectHit && CurrentFocused.interactableType != InteractableType.Poster)
             {
                 CurrentFocused = this;
             }
+            else
+            {
+                float myDist = dist;
+                Vector3 myDir = (transform.position - camPos).normalized;
+                float myDot = Vector3.Dot(playerCam.forward, myDir);
+
+                float otherDist = Vector3.Distance(camPos, CurrentFocused.cachedCollider != null ? CurrentFocused.cachedCollider.ClosestPoint(camPos) : CurrentFocused.transform.position);
+                Vector3 otherDir = (CurrentFocused.transform.position - camPos).normalized;
+                float otherDot = Vector3.Dot(playerCam.forward, otherDir);
+
+                // Daha yüksek dot ve daha düşük mesafe önceliğe sahiptir
+                float myScore = myDot * 1.5f - (myDist / interactDistance);
+                float otherScore = otherDot * 1.5f - (otherDist / CurrentFocused.interactDistance);
+
+                if (myScore > otherScore)
+                {
+                    CurrentFocused = this;
+                }
+            }
         }
+    }
+
+    private bool IsMyCollider(Collider col)
+    {
+        if (col == null) return false;
+        if (col == cachedCollider) return true;
+        if (col.transform == transform || col.transform.IsChildOf(transform)) return true;
+        if (col.GetComponentInParent<StoryInteractable>() == this) return true;
+        return false;
     }
 
     /// <summary>

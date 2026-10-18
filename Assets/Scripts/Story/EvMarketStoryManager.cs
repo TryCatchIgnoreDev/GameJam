@@ -123,6 +123,7 @@ public class EvMarketStoryManager : MonoBehaviour
     private bool hasInteractedWithSafeTable = false;
     private bool hasListenedStairsDialogue = false;
     private bool isPlayerOutsideOnStreet = false;
+    private bool hasUsedApartmentExitDoor = false;
     private Transform playerTransform;
 
     private void Awake()
@@ -575,8 +576,8 @@ public class EvMarketStoryManager : MonoBehaviour
             }
         }
 
-        // Sokağa açılan kapı kontrolü (Stage 3 konuşması sonrası, Stage 4 veya Stage 5)
-        if (!isPlayerOutsideOnStreet && currentStage >= StoryStage.Stage3_TalkToFriendsUpstairs && currentStage <= StoryStage.Stage5_MarketShopping)
+        // Sokağa açılan kapı kontrolü (Stage 4 poster bakışı sonrası veya Stage 5)
+        if (!hasUsedApartmentExitDoor && !isPlayerOutsideOnStreet && currentStage >= StoryStage.Stage4_SecondPosterLook && currentStage <= StoryStage.Stage5_MarketShopping)
         {
             EnsureHomeEntranceReference();
             if (homeEntranceInteractable != null && homeEntranceInteractable.gameObject.activeInHierarchy && homeEntranceInteractable.isInteractable)
@@ -591,7 +592,7 @@ public class EvMarketStoryManager : MonoBehaviour
 #else
                     if (Input.GetKeyDown(KeyCode.E)) isEPressed = true;
 #endif
-                    if (isEPressed || dist <= 1.8f)
+                    if (isEPressed || dist <= 1.5f)
                     {
                         TeleportPlayerToStreet();
                     }
@@ -635,8 +636,8 @@ public class EvMarketStoryManager : MonoBehaviour
         {
             StartCoroutine(NapkinTakenRoutine());
         }
-        // Stage 3 veya Stage 4: Postere 2. kez bakış
-        else if ((currentStage == StoryStage.Stage4_SecondPosterLook || currentStage == StoryStage.Stage3_TalkToFriendsUpstairs) && interactable.interactableType == InteractableType.Poster)
+        // Stage 4: Postere 2. kez bakış
+        else if (currentStage == StoryStage.Stage4_SecondPosterLook && interactable.interactableType == InteractableType.Poster)
         {
             if (activeStoryRoutine != null)
             {
@@ -649,12 +650,12 @@ public class EvMarketStoryManager : MonoBehaviour
         // Kapıdan sokağa çıkış veya sokaktan eve geri giriş
         else if (interactable.interactableType == InteractableType.HomeEntrance)
         {
-            if (!isPlayerOutsideOnStreet)
+            if (!isPlayerOutsideOnStreet && !hasUsedApartmentExitDoor)
             {
-                // Evin içindeyken kapıya basarsa doğrudan sokağa ışınla!
+                // Evin içindeyken kapıya basarsa doğrudan sokağa ışınla! 1 kez kullan ve anında disable et!
                 TeleportPlayerToStreet();
             }
-            else
+            else if (isPlayerOutsideOnStreet)
             {
                 // Sokaktayken giriş kapısına basarsa doğrudan eve ışınla ve depremi başlat!
                 TeleportPlayerBackInsideHouse();
@@ -756,6 +757,10 @@ public class EvMarketStoryManager : MonoBehaviour
 
     private void TeleportPlayerToStreet()
     {
+        // Apartman çıkış kapısı dışarı çıkarken 1 kez kullanılır ve anında disable edilir!
+        hasUsedApartmentExitDoor = true;
+        SetHomeEntranceTriggerActive(false);
+
         if (playerTransform == null) FindPlayer();
 
         if (streetSpawnPointOutside == null)
@@ -888,11 +893,17 @@ public class EvMarketStoryManager : MonoBehaviour
 
     /// <summary>
     /// Sokağa açılan apartman çıkış kapısı trigger'ını (06_Trigger_Apartman_Cikis_Kapisi) aktif veya pasif yapar.
-    /// Diyalogda 'dışarı çık' kısmı gelene kadar kapalı tutulur.
+    /// Dışarı çıkış için 1 kez kullanıldıktan sonra tekrar aktif edilemez.
     /// </summary>
     public void SetHomeEntranceTriggerActive(bool active)
     {
         EnsureHomeEntranceReference();
+
+        // Eğer dışarı çıkış için 1 kez kullanıldıysa, tekrar aktif edilmesine izin verme!
+        if (active && hasUsedApartmentExitDoor)
+        {
+            active = false;
+        }
 
         if (homeEntranceInteractable != null)
         {
@@ -905,6 +916,13 @@ public class EvMarketStoryManager : MonoBehaviour
             {
                 homeEntranceInteractable.SetPrompt("[E] Apartmandan Sokağa Çık (Markete Git)", true);
             }
+            else
+            {
+                if (StoryInteractable.CurrentFocused == homeEntranceInteractable)
+                {
+                    homeEntranceInteractable.SetPrompt("", false);
+                }
+            }
 
             Collider col = homeEntranceInteractable.GetComponent<Collider>();
             if (col != null)
@@ -913,7 +931,7 @@ public class EvMarketStoryManager : MonoBehaviour
                 col.isTrigger = true;
             }
 
-            Debug.Log($"[EvMarketStoryManager] Sokağa açılan kapı triggeri: {(active ? "AKTİF EDİLDİ" : "PASİF (GİZLİ)")}");
+            Debug.Log($"[EvMarketStoryManager] Sokağa açılan kapı triggeri: {(active ? "AKTİF EDİLDİ" : "PASİF (GİZLİ/DEVRE DIŞI)")}");
         }
         else
         {
@@ -1098,8 +1116,8 @@ public class EvMarketStoryManager : MonoBehaviour
         fader.ShowSubtitle("Mert (Sen)", "Tamam...", 2.0f);
         yield return new WaitForSeconds(2.2f);
 
-        // Diyalogda dışarı çık kısmı geldi! Sokağa açılan kapı trigger'ını aktif et:
-        SetHomeEntranceTriggerActive(true);
+        // Postere 2. kez bakılana kadar apartman kapısı kapalı tutulur
+        SetHomeEntranceTriggerActive(false);
 
         fader.ShowSubtitle("Görev", "Merdivenlerden aşağı in ve deprem posterine tekrar bak.", 3.5f);
 
@@ -1144,7 +1162,8 @@ public class EvMarketStoryManager : MonoBehaviour
     // --- STAGE 4: Postere 2. Bakış & 90 Saniye Sayacının Başlaması ---
     private IEnumerator Stage4SetupRoutine()
     {
-        SetHomeEntranceTriggerActive(true);
+        // Postere 2. kez bakılana kadar kapı kapalı tutulur
+        SetHomeEntranceTriggerActive(false);
         if (posterInteractable != null)
         {
             posterInteractable.gameObject.SetActive(true);
@@ -1585,8 +1604,9 @@ public class EvMarketStoryManager : MonoBehaviour
             wallClock?.SetDigitalTime(21, 0, 0);
         }
 
-        if (targetStage < StoryStage.Stage3_TalkToFriendsUpstairs)
+        if (targetStage < StoryStage.Stage5_MarketShopping)
         {
+            hasUsedApartmentExitDoor = false;
             SetHomeEntranceTriggerActive(false);
         }
         else
