@@ -575,6 +575,30 @@ public class EvMarketStoryManager : MonoBehaviour
             }
         }
 
+        // Sokağa açılan kapı kontrolü (Stage 3 konuşması sonrası, Stage 4 veya Stage 5)
+        if (!isPlayerOutsideOnStreet && currentStage >= StoryStage.Stage3_TalkToFriendsUpstairs && currentStage <= StoryStage.Stage5_MarketShopping)
+        {
+            EnsureHomeEntranceReference();
+            if (homeEntranceInteractable != null && homeEntranceInteractable.gameObject.activeInHierarchy && homeEntranceInteractable.isInteractable)
+            {
+                float dist = Vector3.Distance(playerTransform.position, homeEntranceInteractable.transform.position);
+                if (dist <= 3.8f)
+                {
+                    bool isEPressed = false;
+#if ENABLE_INPUT_SYSTEM
+                    if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) isEPressed = true;
+                    if (Gamepad.current != null && Gamepad.current.buttonWest.wasPressedThisFrame) isEPressed = true;
+#else
+                    if (Input.GetKeyDown(KeyCode.E)) isEPressed = true;
+#endif
+                    if (isEPressed || dist <= 1.8f)
+                    {
+                        TeleportPlayerToStreet();
+                    }
+                }
+            }
+        }
+
         // Stage 7: Masanın yanına çömelme veya E tuşuyla çök-kapan-tutun kontrolü
         if (currentStage == StoryStage.Stage7_EarthquakeAt2100_DirectFriends)
         {
@@ -819,55 +843,82 @@ public class EvMarketStoryManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Sokağa açılan apartman çıkış kapısı trigger'ının referansını garantiye alır.
+    /// Obje pasif olsa bile parent ([TRIGGER_PALETI_AL_KOY]) üzerinden veya sahnedeki objelerden bulur.
+    /// </summary>
+    public StoryInteractable EnsureHomeEntranceReference()
+    {
+        if (homeEntranceInteractable != null) return homeEntranceInteractable;
+
+        GameObject exitObj = GameObject.Find("06_Trigger_Apartman_Cikis_Kapisi");
+        if (exitObj == null)
+        {
+            GameObject parent = GameObject.Find("[TRIGGER_PALETI_AL_KOY]") ?? GameObject.Find("/[TRIGGER_PALETI_AL_KOY]");
+            if (parent != null)
+            {
+                Transform child = parent.transform.Find("06_Trigger_Apartman_Cikis_Kapisi");
+                if (child != null) exitObj = child.gameObject;
+            }
+        }
+        if (exitObj == null)
+        {
+            var allSceneObjects = Resources.FindObjectsOfTypeAll<GameObject>();
+            foreach (var go in allSceneObjects)
+            {
+                if (go.name == "06_Trigger_Apartman_Cikis_Kapisi" && go.scene.isLoaded)
+                {
+                    exitObj = go;
+                    break;
+                }
+            }
+        }
+
+        if (exitObj != null)
+        {
+            homeEntranceInteractable = exitObj.GetComponent<StoryInteractable>() ?? exitObj.AddComponent<StoryInteractable>();
+            homeEntranceInteractable.interactableType = InteractableType.HomeEntrance;
+            homeEntranceInteractable.interactableId = "apartment_exit_door";
+            homeEntranceInteractable.promptText = "[E] Apartmandan Sokağa Çık (Markete Git)";
+            homeEntranceInteractable.interactDistance = 4.0f;
+            homeEntranceInteractable.requireFacing = false;
+        }
+
+        return homeEntranceInteractable;
+    }
+
+    /// <summary>
     /// Sokağa açılan apartman çıkış kapısı trigger'ını (06_Trigger_Apartman_Cikis_Kapisi) aktif veya pasif yapar.
     /// Diyalogda 'dışarı çık' kısmı gelene kadar kapalı tutulur.
     /// </summary>
     public void SetHomeEntranceTriggerActive(bool active)
     {
+        EnsureHomeEntranceReference();
+
         if (homeEntranceInteractable != null)
         {
+            homeEntranceInteractable.gameObject.SetActive(active);
             homeEntranceInteractable.isInteractable = active;
             homeEntranceInteractable.highlightMarker = active;
-            if (homeEntranceInteractable.gameObject != null)
-            {
-                homeEntranceInteractable.gameObject.SetActive(active);
-            }
+            homeEntranceInteractable.requireFacing = false;
+            homeEntranceInteractable.interactDistance = 4.0f;
             if (active)
             {
                 homeEntranceInteractable.SetPrompt("[E] Apartmandan Sokağa Çık (Markete Git)", true);
             }
+
+            Collider col = homeEntranceInteractable.GetComponent<Collider>();
+            if (col != null)
+            {
+                col.enabled = active;
+                col.isTrigger = true;
+            }
+
+            Debug.Log($"[EvMarketStoryManager] Sokağa açılan kapı triggeri: {(active ? "AKTİF EDİLDİ" : "PASİF (GİZLİ)")}");
         }
         else
         {
-            GameObject exitObj = GameObject.Find("06_Trigger_Apartman_Cikis_Kapisi");
-            if (exitObj == null)
-            {
-                StoryInteractable[] allInteractables = Resources.FindObjectsOfTypeAll<StoryInteractable>();
-                foreach (var item in allInteractables)
-                {
-                    if (item.gameObject.name == "06_Trigger_Apartman_Cikis_Kapisi" || item.interactableType == InteractableType.HomeEntrance)
-                    {
-                        exitObj = item.gameObject;
-                        homeEntranceInteractable = item;
-                        break;
-                    }
-                }
-            }
-            if (exitObj != null)
-            {
-                exitObj.SetActive(active);
-                if (homeEntranceInteractable != null)
-                {
-                    homeEntranceInteractable.isInteractable = active;
-                    homeEntranceInteractable.highlightMarker = active;
-                    if (active)
-                    {
-                        homeEntranceInteractable.SetPrompt("[E] Apartmandan Sokağa Çık (Markete Git)", true);
-                    }
-                }
-            }
+            Debug.LogWarning("[EvMarketStoryManager] SetHomeEntranceTriggerActive: 06_Trigger_Apartman_Cikis_Kapisi bulunamadı!");
         }
-        Debug.Log($"[EvMarketStoryManager] Sokağa açılan kapı triggeri: {(active ? "AKTİF" : "PASİF (GİZLİ)")}");
     }
 
     #endregion
@@ -1093,6 +1144,7 @@ public class EvMarketStoryManager : MonoBehaviour
     // --- STAGE 4: Postere 2. Bakış & 90 Saniye Sayacının Başlaması ---
     private IEnumerator Stage4SetupRoutine()
     {
+        SetHomeEntranceTriggerActive(true);
         if (posterInteractable != null)
         {
             posterInteractable.gameObject.SetActive(true);
@@ -1134,6 +1186,7 @@ public class EvMarketStoryManager : MonoBehaviour
     // --- STAGE 5: Markette Tetris Çantasını Hazırlama ---
     private IEnumerator Stage5Routine()
     {
+        SetHomeEntranceTriggerActive(true);
         ScreenFaderUI.EnsureInstance()?.ShowSubtitle("Görev", "Apartman çıkış kapısından sokağa çık, Markete koş ve çantayı hazırla!", 4.0f);
         yield return null;
     }
