@@ -76,6 +76,7 @@ namespace Story.Editor
             if (instance == null) return null;
 
             Undo.RegisterCreatedObjectUndo(instance, "Spawn Decor");
+            instance.tag = "house";
             instance.transform.SetParent(parent.transform);
             instance.transform.localScale = Vector3.one * scale;
             instance.transform.eulerAngles = targetRot;
@@ -113,6 +114,7 @@ namespace Story.Editor
             if (instance == null) return null;
 
             Undo.RegisterCreatedObjectUndo(instance, "Spawn Tabletop Decor");
+            instance.tag = "house";
             instance.transform.SetParent(parent.transform);
             instance.transform.localScale = Vector3.one * scale;
             instance.transform.eulerAngles = targetRot;
