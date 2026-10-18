@@ -86,9 +86,42 @@ public class IntroSequenceController : MonoBehaviour
             }
         }
 
+        SetupEscapeWaypoints();
+
         if (autoStart)
         {
             StartSequence();
+        }
+    }
+
+    private void SetupEscapeWaypoints()
+    {
+        if (friendA1 != null)
+        {
+            var rc1 = friendA1.GetComponent<NPCRunController>();
+            if (rc1 != null)
+            {
+                rc1.moveForwardWhenRunning = true;
+                rc1.runMoveSpeed = 3.6f;
+                rc1.SetCustomWaypoints(new Vector3[] {
+                    new Vector3(27.5f, friendA1.transform.position.y, -1862.5f),
+                    new Vector3(29.8f, friendA1.transform.position.y, -1859.2f)
+                });
+            }
+        }
+
+        if (friendA2 != null)
+        {
+            var rc2 = friendA2.GetComponent<NPCRunController>();
+            if (rc2 != null)
+            {
+                rc2.moveForwardWhenRunning = true;
+                rc2.runMoveSpeed = 3.8f;
+                rc2.SetCustomWaypoints(new Vector3[] {
+                    new Vector3(30.2f, friendA2.transform.position.y, -1864.5f),
+                    new Vector3(29.8f, friendA2.transform.position.y, -1859.2f)
+                });
+            }
         }
     }
 

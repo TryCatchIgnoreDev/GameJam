@@ -91,6 +91,25 @@ public static class GameEvents
     }
 
 
+    // ==========================================
+    // EVENT 5: Çömelme / Çök-Kapan-Tutun (Crouching)
+    // ==========================================
+    public static event Action<bool> OnEventCrouching;
+    public static bool IsCrouchingActive { get; private set; }
+
+    public static void TriggerCrouching(bool crouch = true)
+    {
+        IsCrouchingActive = crouch;
+        Debug.Log($"[GameEvents] Event 5 (Crouching): {(crouch ? "ÇÖMELME BAŞLADI" : "ÇÖMELME DURDU")}");
+        OnEventCrouching?.Invoke(crouch);
+    }
+
+    public static void ToggleCrouching()
+    {
+        TriggerCrouching(!IsCrouchingActive);
+    }
+
+
     /// <summary>
     /// Gerektiğinde tüm event durumlarını sıfırlamak için kullanılır.
     /// </summary>
@@ -100,5 +119,6 @@ public static class GameEvents
         IsEvent2Triggered = false;
         IsRunningActive = false;
         IsDialogueActive = false;
+        IsCrouchingActive = false;
     }
 }

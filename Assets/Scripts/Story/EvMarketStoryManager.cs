@@ -1294,7 +1294,32 @@ public class EvMarketStoryManager : MonoBehaviour
 
     private IEnumerator WrongChoiceRoutine()
     {
-        // Arkadaşlar merdivene ve pencereye koşar
+        // Arkadaşlar merdivene ve pencereye panikle koşar
+        if (friendA1 != null)
+        {
+            var rc1 = friendA1.GetComponent<NPCRunController>();
+            if (rc1 != null)
+            {
+                rc1.moveForwardWhenRunning = true;
+                rc1.SetCustomWaypoints(new Vector3[] {
+                    new Vector3(7.5f, friendA1.transform.position.y, -6.0f),
+                    new Vector3(9.5f, friendA1.transform.position.y, -12.0f)
+                });
+            }
+        }
+        if (friendA2 != null)
+        {
+            var rc2 = friendA2.GetComponent<NPCRunController>();
+            if (rc2 != null)
+            {
+                rc2.moveForwardWhenRunning = true;
+                rc2.SetCustomWaypoints(new Vector3[] {
+                    new Vector3(5.5f, friendA2.transform.position.y, -10.0f),
+                    new Vector3(9.5f, friendA2.transform.position.y, -14.0f)
+                });
+            }
+        }
+
         GameEvents.TriggerRunning(true);
         Speak(friendA1, "Arkadaş 1", "Merdivenlere koşuuun!!", 2.0f);
         yield return new WaitForSeconds(1.5f);
@@ -1309,6 +1334,43 @@ public class EvMarketStoryManager : MonoBehaviour
     private IEnumerator CorrectChoiceRoutine()
     {
         Speak(friendA1, "Arkadaş 1", "Tamam, masanın yanına çöküyoruz!", 2.5f);
+
+        // Arkadaşlar masanın yanına geçip ÇÖK-KAPAN-TUTUN pozisyonuna geçer
+        Transform tableTarget = safeTableInteractable != null ? safeTableInteractable.transform : null;
+
+        if (friendA1 != null)
+        {
+            var rc1 = friendA1.GetComponent<NPCRunController>();
+            if (rc1 != null)
+            {
+                rc1.moveForwardWhenRunning = true;
+                rc1.SetCustomWaypoints(new Vector3[] {
+                    new Vector3(4.5f, friendA1.transform.position.y, -6.6f)
+                }, crouchAtEnd: true, lookAtTarget: tableTarget);
+                rc1.StartRunning();
+            }
+            else
+            {
+                GameEvents.TriggerCrouching(true);
+            }
+        }
+
+        if (friendA2 != null)
+        {
+            var rc2 = friendA2.GetComponent<NPCRunController>();
+            if (rc2 != null)
+            {
+                rc2.moveForwardWhenRunning = true;
+                rc2.SetCustomWaypoints(new Vector3[] {
+                    new Vector3(3.5f, friendA2.transform.position.y, -7.6f)
+                }, crouchAtEnd: true, lookAtTarget: tableTarget);
+                rc2.StartRunning();
+            }
+            else
+            {
+                GameEvents.TriggerCrouching(true);
+            }
+        }
 
         ScreenFaderUI fader = ScreenFaderUI.EnsureInstance();
         fader.ShowSubtitle("Mert (Sen)", "Çabuk! 12 saniye içinde sağlam masanın yanına geç ve ÇÖK-KAPAN-TUTUN yap!", 3.2f);
